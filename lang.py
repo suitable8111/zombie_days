@@ -1,0 +1,509 @@
+"""
+Minimal i18n module.
+Call t("key") anywhere to get the current-language string.
+Call toggle() to switch between "ko" and "en".
+"""
+
+_STRINGS = {
+    "ko": {
+        # HUD — entity counts
+        "hud_zombies":  "좀비",
+        "hud_civilian": "일반인",
+        "hud_infected": "감염됨",
+        # HUD — player status
+        "hud_status":   "상태",
+        "st_hidden":    "은폐 중",
+        "st_swimming":  "수영 중 (익사 위험!)",
+        "st_moving":    "이동 중 (소음 {}px)",
+        "st_quiet":     "은밀 이동 중",
+        "st_still":     "정지",
+        # HUD — inventory
+        "hud_weapon":   "장비",
+        "wp_none":      "없음  (은신처를 탐색하세요)",
+        "wp_stat":      "{}  ({:.1f}발/초  피해 {})",   # name, fire_rate, damage
+        "hud_screws":   "나사: {}개",
+        # Bottom hint
+        "hint":         "WASD 이동  |  ESC 종료  |  {}  |  {}",
+        "dbg_on":       "F1 디버그 ON",
+        "dbg_off":      "F1 디버그 OFF",
+        "lang_switch":  "L: English",
+        # Debug legend
+        "leg_noise":    "● 노란 원 — 소음 반경",
+        "leg_sight":    "● 빨간 원 — 좀비 시야",
+        "leg_loot":     "■ 금색 테두리 — 은신처 (아이템)",
+        "leg_states":   "배회 / 수사 / 추적",
+        # Weapon names
+        "wp_pistol":     "권총",
+        "wp_rifle":      "소총",
+        "wp_shotgun":    "샷건",
+        "wp_machinegun": "기관총",
+        "wp_grenade":       "수류탄",
+        "wp_flamethrower":  "화염방사기",
+        "wp_heal_pack":     "힐팩",
+        "wp_lantern":    "랜턴",
+        "wp_fist":       "주먹",
+        "wp_bat":        "야구방망이",
+        "wp_machete":    "마체테",
+        "wp_knuckle":    "너클펀치",
+        # Slot bar abbreviations
+        "slot_abbrev_pistol":       "PIR",
+        "slot_abbrev_rifle":        "RIF",
+        "slot_abbrev_shotgun":      "SHG",
+        "slot_abbrev_machinegun":   "MG",
+        "slot_abbrev_grenade":      "GRN",
+        "slot_abbrev_flamethrower": "FLM",
+        "slot_abbrev_heal_pack":    "MED",
+        "slot_abbrev_lantern":      "LNT",
+        "slot_abbrev_fist":         "FST",
+        "slot_abbrev_bat":          "BAT",
+        "slot_abbrev_machete":      "MTC",
+        "slot_abbrev_knuckle":      "KNK",
+        # Slot category names (displayed in slot bar tooltip area)
+        "slot_cat_0": "1.권총류",
+        "slot_cat_1": "2.소총",
+        "slot_cat_2": "3.화기류",
+        "slot_cat_3": "4.수류탄",
+        "slot_cat_4": "5.아이템",
+        "slot_cat_5": "0.근접무기",
+        # Lantern HUD
+        "lantern_fuel": "연료: {}",
+        "lantern_off":  "연료 없음",
+        # Combat / upgrade HUD
+        "hud_ammo":      "탄약",
+        "upg_title":     "개조",
+        "upg_fire_rate": "연사속도",
+        "upg_damage":    "공격력",
+        "upg_proj_spd":  "투사속도",
+        "upg_fuel":      "연료통 증가",
+        "upg_cost":      "{}나사",
+        "upg_maxed":     "최대",
+        "upg_no_weapon": "무기 없음 — 은신처를 탐색하세요",
+        "upg_no_ammo":   "탄약 없음",
+        "upg_keys":        "[Z]연사  [X]공격  [C]속도",
+        "upg_attack_rate": "공격속도",
+        "upg_knockback":   "밀치기",
+        "upg_melee_key":   "[Z] 업그레이드",
+        "upg_melee_lv":    "레벨: {}/{}",
+        # Zone debug labels
+        "zone_bush":     "풀숲",
+        "zone_hideout":  "은신처",
+        "zone_lake":     "호수",
+        "zone_cliff":    "절벽",
+        "zone_river":    "강",
+        "zone_valley":   "골짜기",
+        "zone_military": "군부대",
+        # Zombie state abbreviations (debug overlay)
+        "zs_wander":      "배회",
+        "zs_investigate": "수사",
+        "zs_chase":       "추적",
+        "loading":       "로딩 중...",
+        # Player HP / stamina
+        "hud_hp":        "체력",
+        "hud_stamina":   "스태미너",
+        "hud_reload":    "재장전 중...",
+        "hud_cooldown":  "쿨타임",
+        "hud_mag":       "탄창",
+        # Game states
+        "menu_title":    "좀비도어",
+        "menu_start":    "ENTER — 시작",
+        "menu_sub":      "WASD 이동  |  마우스 조준  |  클릭 사격  |  R 재장전  |  Shift 질주",
+        "over_title":    "게임 오버",
+        "over_restart":  "ENTER — 메인 메뉴",
+        "over_kills":    "처치: {}",
+        "over_screws":   "나사: {}",
+        # Survival day system
+        "hud_day":            "DAY",
+        "day_survived":       "DAY {} : 생존 성공!",
+        "day_bonus":          "+{} 나사 지급",
+        "day_warn_speed":     "경고: 전염성이 강화되어 날렵한 변종들이 출몰하기 시작합니다!",
+        "day_warn_quad":      "위기: 4족 보행 변종이 목격되었습니다! 기습 도약 주의!",
+        "day_warn_giant":     "대재앙: 거대 좀비들이 도시 장벽을 무너뜨리고 진입 중입니다!",
+        "danger_safe":        "안전",
+        "danger_warning":     "경고",
+        "danger_crisis":      "위기",
+        "danger_catastrophe": "대재앙",
+        # Zombie kinds
+        "zk_regular":    "일반",
+        "zk_speed":      "빠름",
+        "zk_giant":      "거대",
+        "zk_runner":     "질주형",
+        "zk_quad":       "4족 보행",
+        # Door
+        "door_open":     "[E] 문 열기",
+        "door_close":    "[E] 문 닫기",
+        # Vehicle
+        "veh_enter_hint": "[E] 탑승",
+        "veh_exit_hint":  "[E] 하차",
+        "veh_hud_hp":     "차량 HP",
+        "veh_hud_fuel":   "연료",
+        "veh_hud_alt":    "고도",
+        "veh_fuel_empty":   "연료 부족!",
+        "tank_water_warn":  "침수 경고! {}초",
+        "tank_flooding":    "엔진 침수! 탈출하세요!",
+        # Shop signs (rendered on building roof)
+        "shop_sign_weapon":   "무기점",
+        "shop_sign_hospital": "병원",
+        "shop_sign_hardware": "철물점",
+        # Shop titles (UI header)
+        "shop_title_weapon":   "무기점  — 나사로 구매",
+        "shop_title_hospital": "병원  — 나사로 구매",
+        "shop_title_hardware": "철물점  — 나사로 구매",
+        # Shop items
+        "shop_ammo_ref": "탄약 보충",
+        "shop_fuel_can": "연료통",
+        # Shop UI
+        "shop_enter_hint":      "[T] 상점",
+        "shop_enter_hint_mart": "[R] 마트",
+        "shop_hint":        "[숫자키] 구매/업그레이드  |  T / ESC 닫기",
+        "shop_no_screws":   "나사가 부족합니다",
+        "shop_no_vehicle":  "근처에 차량이 없습니다",
+        "shop_upg_section": "── 업그레이드 ──",
+        # Zone labels
+        "zone_road":   "도로",
+        # Quit confirmation
+        "quit_title": "게임을 종료하시겠습니까?",
+        "quit_yes":   "[ Y ] 종료",
+        "quit_no":    "[ N ] / ESC  취소",
+        # Minimap
+        "minimap_title":     "세계 지도",
+        "minimap_close":     "[ M ] 닫기",
+        "minimap_debug":     "디버그: 전체 공개",
+        "minimap_leg_player":  "플레이어",
+        "minimap_leg_zombie":  "좀비",
+        "minimap_leg_npc":     "생존자",
+        "minimap_leg_vehicle": "차량",
+        "minimap_leg_shop_w":  "무기점",
+        "minimap_leg_shop_h":  "병원",
+        "minimap_leg_shop_hw": "철물점",
+        # Shop — mart
+        "shop_sign_mart":   "식료품마트",
+        "shop_title_mart":  "식료품마트  — 나사로 구매",
+        # Shop — gym
+        "shop_sign_gym":         "체육관",
+        "shop_title_gym":        "체육관  — 능력 강화",
+        "gym_stamina_regen":     "스태미나 회복 속도",
+        "gym_speed":             "이동 속도",
+        "gym_max_hp":            "최대 체력",
+        "gym_fist_dmg":          "주먹 공격력",
+        "gym_effect_stamina":    "회복 +{}/s",
+        "gym_effect_speed":      "속도 +{}px/s",
+        "gym_effect_hp":         "체력 +{}",
+        "gym_effect_fist":       "주먹 +{}",
+        "gym_maxed":             "MAX",
+        "gym_lv":                "Lv.{}/{}",
+        # Town entry
+        "town_enter":       "{}타운 진입",
+        # Terrain labels – sea / ocean / beach / forest
+        "zone_sea":         "바다",
+        "zone_ocean":       "대양",
+        "zone_beach":       "해변",
+        "zone_bush":        "숲",
+        "zone_cliff":       "절벽",
+        "zone_river":       "강",
+        # Main menu buttons
+        "menu_new_game":    "새 게임",
+        "menu_continue":    "이어하기",
+        "menu_options":     "옵션",
+        "menu_no_save":     "저장 파일 없음",
+        "menu_hint_bar":    "WASD 이동  |  마우스 조준  |  클릭 사격  |  Shift 질주",
+        # Options screen
+        "opt_title":        "옵션",
+        "opt_language":     "언어 / Language",
+        "opt_controls":     "키 설정",
+        "opt_back":           "← 돌아가기",
+        "opt_joystick_on":    "📱 조이스틱  ✅ 활성화",
+        "opt_joystick_off":   "📱 조이스틱  ☐ 비활성화",
+        "menu_mobile_mode":   "모바일 모드",
+        "opt_bind_move":     "이동",
+        "opt_bind_aim":      "조준",
+        "opt_bind_fire":     "사격",
+        "opt_bind_sprint":   "질주",
+        "opt_bind_interact": "탑승 / 문 열기",
+        "opt_bind_reload":   "재장전",
+        "opt_bind_slots":    "무기 슬롯",
+        "opt_bind_melee":    "근접 무기",
+        "opt_bind_map":      "세계 지도",
+        "opt_bind_debug":    "디버그",
+        "opt_bind_fly":      "비행 (헬기/비행기)",
+        # Pause menu
+        "pause_title":    "일시정지",
+        "pause_resume":   "게임 계속",
+        "pause_save":     "게임 저장",
+        "pause_settings": "언어 / 설정",
+        "pause_mainmenu": "메인 메뉴",
+        "pause_quit":     "게임 종료",
+        "pause_saved":    "✓ 저장 완료",
+        # HUD redesign
+        "hud_kills":      "처치: {}",
+        "hud_esc_hint":   "ESC 메뉴",
+        # Debug HUD
+        "dbg_chunk":      "청크  활성 {}  /  로드 {}",
+        "dbg_entities":   "좀비 {}  /  시민 {}",
+        "dbg_chunk_s":    "청크  활성:{}  로드:{}",
+        # Civilian kills notification
+        "civ_killed":     "시민 {}명이 희생되었습니다",
+        "civ_penalty":    "나사 -{} 페널티",
+        # Grenade
+        "grenade_aim":    "클릭하여 투척  (사거리 {}px)",
+    },
+    "en": {
+        "hud_zombies":  "Zombies",
+        "hud_civilian": "Civilians",
+        "hud_infected": "Infected",
+        "hud_status":   "Status",
+        "st_hidden":    "Hidden",
+        "st_swimming":  "Swimming (drowning!)",
+        "st_moving":    "Moving (noise {}px)",
+        "st_quiet":     "Sneaking",
+        "st_still":     "Idle",
+        "hud_weapon":   "Weapon",
+        "wp_none":      "None  (search hideouts)",
+        "wp_stat":      "{}  ({:.1f}rps  DMG {})",
+        "hud_screws":   "Screws: {}",
+        "hint":         "WASD Move  |  ESC Quit  |  {}  |  {}",
+        "dbg_on":       "F1 Debug ON",
+        "dbg_off":      "F1 Debug OFF",
+        "lang_switch":  "L: 한국어",
+        "leg_noise":    "● Yellow — Noise radius",
+        "leg_sight":    "● Red — Zombie sight range",
+        "leg_loot":     "■ Gold border — Hideout (loot)",
+        "leg_states":   "Wander / Investigate / Chase",
+        # Weapon names
+        "wp_pistol":     "Pistol",
+        "wp_rifle":      "Rifle",
+        "wp_shotgun":    "Shotgun",
+        "wp_machinegun": "MachineGun",
+        "wp_grenade":       "Grenade",
+        "wp_flamethrower":  "Flamethrower",
+        "wp_heal_pack":     "Heal Pack",
+        "wp_lantern":    "Lantern",
+        "wp_fist":       "Fist",
+        "wp_bat":        "Baseball Bat",
+        "wp_machete":    "Machete",
+        "wp_knuckle":    "Knuckle",
+        # Slot bar abbreviations
+        "slot_abbrev_pistol":       "PIR",
+        "slot_abbrev_rifle":        "RIF",
+        "slot_abbrev_shotgun":      "SHG",
+        "slot_abbrev_machinegun":   "MG",
+        "slot_abbrev_grenade":      "GRN",
+        "slot_abbrev_flamethrower": "FLM",
+        "slot_abbrev_heal_pack":    "MED",
+        "slot_abbrev_lantern":      "LNT",
+        "slot_abbrev_fist":         "FST",
+        "slot_abbrev_bat":          "BAT",
+        "slot_abbrev_machete":      "MTC",
+        "slot_abbrev_knuckle":      "KNK",
+        # Slot category names
+        "slot_cat_0": "1.Pistols",
+        "slot_cat_1": "2.Rifle",
+        "slot_cat_2": "3.Firearms",
+        "slot_cat_3": "4.Grenade",
+        "slot_cat_4": "5.Items",
+        "slot_cat_5": "0.Melee",
+        # Lantern HUD
+        "lantern_fuel": "Fuel: {}",
+        "lantern_off":  "No Fuel",
+        # Combat / upgrade HUD
+        "hud_ammo":      "Ammo",
+        "upg_title":     "Upgrade",
+        "upg_fire_rate": "Fire Rate",
+        "upg_damage":    "Damage",
+        "upg_proj_spd":  "Proj Speed",
+        "upg_fuel":      "Fuel Tank +",
+        "upg_cost":      "{}sc",
+        "upg_maxed":     "MAX",
+        "upg_no_weapon": "No Weapon — search hideouts",
+        "upg_no_ammo":   "No Ammo",
+        "upg_keys":        "[Z]RoF  [X]DMG  [C]Spd",
+        "upg_attack_rate": "Atk Speed",
+        "upg_knockback":   "Knockback",
+        "upg_melee_key":   "[Z] Upgrade",
+        "upg_melee_lv":    "Level: {}/{}",
+        "zone_bush":     "BUSH",
+        "zone_hideout":  "LOOT",
+        "zone_lake":     "LAKE",
+        "zone_cliff":    "CLIFF",
+        "zone_river":    "RIVER",
+        "zone_valley":   "SLOW",
+        "zone_military": "Military Base",
+        "loading":        "Loading...",
+        "zs_wander":      "WAD",
+        "zs_investigate": "INV",
+        "zs_chase":       "CSE",
+        # Player HP / stamina
+        "hud_hp":        "HP",
+        "hud_stamina":   "Stamina",
+        "hud_reload":    "Reloading...",
+        "hud_cooldown":  "Cooldown",
+        "hud_mag":       "Mag",
+        # Game states
+        "menu_title":    "ZombeeDoor",
+        "menu_start":    "ENTER — Start",
+        "menu_sub":      "WASD Move  |  Mouse Aim  |  Click Fire  |  R Reload  |  Shift Sprint",
+        "over_title":    "GAME OVER",
+        "over_restart":  "ENTER — Main Menu",
+        "over_kills":    "Kills: {}",
+        "over_screws":   "Screws: {}",
+        # Survival day system
+        "hud_day":            "DAY",
+        "day_survived":       "DAY {} : Survived!",
+        "day_bonus":          "+{} Screws awarded",
+        "day_warn_speed":     "WARNING: Agile variants have begun appearing!",
+        "day_warn_quad":      "CRISIS: 4-legged stalkers spotted! Watch for pounces!",
+        "day_warn_giant":     "CATASTROPHE: Giant zombies are breaching city barriers!",
+        "danger_safe":        "SAFE",
+        "danger_warning":     "WARNING",
+        "danger_crisis":      "CRISIS",
+        "danger_catastrophe": "CATASTROPHE",
+        # Zombie kinds
+        "zk_regular":    "Regular",
+        "zk_speed":      "Speed",
+        "zk_giant":      "Giant",
+        "zk_runner":     "Runner",
+        "zk_quad":       "Quad",
+        # Door
+        "door_open":     "[E] Open door",
+        "door_close":    "[E] Close door",
+        # Vehicle
+        "veh_enter_hint": "[E] Board",
+        "veh_exit_hint":  "[E] Exit",
+        "veh_hud_hp":     "Car HP",
+        "veh_hud_fuel":   "Fuel",
+        "veh_hud_alt":    "Alt",
+        "veh_fuel_empty":   "Low Fuel!",
+        "tank_water_warn":  "Flood Warning! {}s",
+        "tank_flooding":    "Engine Flooding! Get Out!",
+        # Shop signs
+        "shop_sign_weapon":   "WEAPON",
+        "shop_sign_hospital": "HOSPITAL",
+        "shop_sign_hardware": "HARDWARE",
+        # Shop titles
+        "shop_title_weapon":   "Weapon Shop",
+        "shop_title_hospital": "Hospital",
+        "shop_title_hardware": "Hardware Store",
+        # Shop items
+        "shop_ammo_ref": "Ammo Refill",
+        "shop_fuel_can": "Fuel Can",
+        # Shop UI
+        "shop_enter_hint":      "[T] Shop",
+        "shop_enter_hint_mart": "[R] Mart",
+        "shop_hint":        "[Number] Buy/Upgrade  |  T / ESC Close",
+        "shop_no_screws":   "Not enough screws",
+        "shop_no_vehicle":  "No vehicle nearby",
+        "shop_upg_section": "── Upgrade ──",
+        # Zone labels
+        "zone_road":   "ROAD",
+        # Quit confirmation
+        "quit_title": "Quit Game?",
+        "quit_yes":   "[ Y ] Quit",
+        "quit_no":    "[ N ] / ESC  Cancel",
+        # Minimap
+        "minimap_title":     "World Map",
+        "minimap_close":     "[ M ] Close",
+        "minimap_debug":     "Debug: All Revealed",
+        "minimap_leg_player":  "Player",
+        "minimap_leg_zombie":  "Zombie",
+        "minimap_leg_npc":     "Survivor",
+        "minimap_leg_vehicle": "Vehicle",
+        "minimap_leg_shop_w":  "Weapon Shop",
+        "minimap_leg_shop_h":  "Hospital",
+        "minimap_leg_shop_hw": "Hardware",
+        # Shop — mart
+        "shop_sign_mart":   "MART",
+        "shop_title_mart":  "Grocery Mart",
+        # Shop — gym
+        "shop_sign_gym":         "GYM",
+        "shop_title_gym":        "Gym  — Upgrade Stats",
+        "gym_stamina_regen":     "Stamina Recovery",
+        "gym_speed":             "Movement Speed",
+        "gym_max_hp":            "Max HP",
+        "gym_fist_dmg":          "Fist Damage",
+        "gym_effect_stamina":    "+{}/s regen",
+        "gym_effect_speed":      "+{} px/s",
+        "gym_effect_hp":         "+{} HP",
+        "gym_effect_fist":       "+{} dmg",
+        "gym_maxed":             "MAX",
+        "gym_lv":                "Lv.{}/{}",
+        # Town entry
+        "town_enter":       "{} Town",
+        # Terrain labels – sea / ocean / beach / forest
+        "zone_sea":         "SEA",
+        "zone_ocean":       "OCEAN",
+        "zone_beach":       "BEACH",
+        "zone_cliff":       "CLIFF",
+        "zone_river":       "RIVER",
+        "zone_bush":        "FOREST",
+        # Main menu buttons
+        "menu_new_game":    "New Game",
+        "menu_continue":    "Continue",
+        "menu_options":     "Options",
+        "menu_no_save":     "No save file",
+        "menu_hint_bar":    "WASD Move  |  Mouse Aim  |  Click Fire  |  Shift Sprint",
+        # Options screen
+        "opt_title":        "Options",
+        "opt_language":     "Language",
+        "opt_controls":     "Key Bindings",
+        "opt_back":           "← Back",
+        "opt_joystick_on":    "📱 Joystick  ✅ ON",
+        "opt_joystick_off":   "📱 Joystick  ☐ OFF",
+        "menu_mobile_mode":   "Mobile Mode",
+        "opt_bind_move":     "Move",
+        "opt_bind_aim":      "Aim",
+        "opt_bind_fire":     "Fire",
+        "opt_bind_sprint":   "Sprint",
+        "opt_bind_interact": "Board / Open door",
+        "opt_bind_reload":   "Reload",
+        "opt_bind_slots":    "Weapon slots",
+        "opt_bind_melee":    "Melee weapon",
+        "opt_bind_map":      "World map",
+        "opt_bind_debug":    "Debug mode",
+        "opt_bind_fly":      "Fly (Heli / Plane)",
+        # Pause menu
+        "pause_title":    "Paused",
+        "pause_resume":   "Resume",
+        "pause_save":     "Save Game",
+        "pause_settings": "Language / Settings",
+        "pause_mainmenu": "Main Menu",
+        "pause_quit":     "Quit Game",
+        "pause_saved":    "✓ Game Saved",
+        # HUD redesign
+        "hud_kills":      "Kills: {}",
+        "hud_esc_hint":   "ESC Menu",
+        # Debug HUD
+        "dbg_chunk":      "Chunk  Active {}  /  Loaded {}",
+        "dbg_entities":   "Zombie {}  /  Civilian {}",
+        "dbg_chunk_s":    "Chunk  A:{}  L:{}",
+        # Civilian kills notification
+        "civ_killed":     "{} civilian(s) died",
+        "civ_penalty":    "Screw -{} penalty",
+        # Grenade
+        "grenade_aim":    "Click to throw  (range {}px)",
+    },
+}
+
+_lang = "ko"
+
+
+def t(key: str, *args) -> str:
+    s = _STRINGS[_lang].get(key, key)
+    return s.format(*args) if args else s
+
+
+def toggle():
+    global _lang
+    _lang = "en" if _lang == "ko" else "ko"
+    import fonts as _fonts
+    _fonts.clear_cache()
+
+
+def set_lang(code: str):
+    global _lang
+    if code in _STRINGS:
+        _lang = code
+        import fonts as _fonts
+        _fonts.clear_cache()
+
+
+def current() -> str:
+    return _lang

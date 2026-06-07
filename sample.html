@@ -1,0 +1,2020 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>픽셀 아포칼립스: 감염과 개조</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts for Retro gaming feel -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #0d0e12;
+            overflow: hidden;
+            user-select: none;
+        }
+        .pixel-text {
+            font-family: 'Press Start 2P', cursive;
+        }
+        canvas {
+            image-rendering: pixelated;
+            cursor: crosshair;
+        }
+        /* Hide scrollbars */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen text-white p-4">
+
+    <!-- Main Container -->
+    <div id="game-container" class="relative w-full max-w-6xl bg-gray-900 border-4 border-gray-700 rounded-lg overflow-hidden shadow-2xl flex flex-col md:flex-row">
+        
+        <!-- Left Sidebar: Game Logs & Controls Info -->
+        <div class="w-full md:w-64 bg-gray-950 p-4 border-b-4 md:border-b-0 md:border-r-4 border-gray-800 flex flex-col justify-between">
+            <div>
+                <h1 class="pixel-text text-sm text-red-500 mb-2 tracking-wider">PIXEL OUTBREAK</h1>
+                <p class="text-xs text-gray-400 mb-4">감염을 피해 살아남고 무기를 개조하세요!</p>
+                
+                <div class="border-t border-gray-800 pt-4 mb-4">
+                    <h3 class="text-xs font-bold text-yellow-500 mb-2">🎮 조작법</h3>
+                    <ul class="text-xs text-gray-300 space-y-1.5 list-disc list-inside">
+                        <li>이동: <span class="text-white font-semibold">W A S D</span></li>
+                        <li>달리기: <span class="text-white font-semibold">Shift</span> (소음 증가)</li>
+                        <li>조준/사격: <span class="text-white font-semibold">마우스 / 클릭</span></li>
+                        <li>재장전: <span class="text-white font-semibold">R</span></li>
+                        <li>은신처: <span class="text-yellow-400 font-semibold">수풀, 건물, 동굴</span> 진입</li>
+                    </ul>
+                </div>
+
+                <div class="border-t border-gray-800 pt-4">
+                    <h3 class="text-xs font-bold text-blue-400 mb-2">🛠️ 실시간 나사 개조</h3>
+                    <ul class="text-xs text-gray-300 space-y-1.5">
+                        <li><span class="bg-gray-800 px-1 rounded text-yellow-400">1</span> 연사력 강화 (나사 3개)</li>
+                        <li><span class="bg-gray-800 px-1 rounded text-yellow-400">2</span> 공격력 강화 (나사 3개)</li>
+                        <li><span class="bg-gray-800 px-1 rounded text-yellow-400">3</span> 탄속 강화 (나사 2개)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Real-time Game Log -->
+            <div class="mt-4 border-t border-gray-800 pt-4 flex-grow flex flex-col justify-end max-h-48 overflow-hidden">
+                <h3 class="text-xs font-bold text-red-400 mb-1">📢 생존 로그</h3>
+                <div id="log-panel" class="text-[10px] text-gray-400 h-28 overflow-y-auto space-y-1 bg-black bg-opacity-40 p-1.5 rounded border border-gray-900">
+                    <p class="text-green-400">[시스템] 난이도를 선택해 시작하세요.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center: Game Canvas & HUD Overlays -->
+        <div class="relative flex-grow bg-black flex items-center justify-center">
+            
+            <!-- Start / Menu Screen Overlay -->
+            <div id="start-screen" class="absolute inset-0 bg-black bg-opacity-90 flex flex-col items-center justify-center z-20 p-6 text-center">
+                <div class="animate-pulse mb-4">
+                    <span class="pixel-text text-3xl md:text-4xl text-red-600 block mb-2 drop-shadow-[0_4px_10px_rgba(220,38,38,0.5)]">Z-BREAKER</span>
+                    <span class="pixel-text text-xs text-yellow-400">PHASE 5: COMBAT & UPGRADE</span>
+                </div>
+                
+                <p class="max-w-md text-sm text-gray-300 mb-6 leading-relaxed">
+                    평화롭던 마을에 치명적인 좀비 바이러스가 퍼졌습니다! 무작위로 감염되는 생존자들을 지키거나, 은신처에 숨어 무기와 나사를 파밍해 무기를 강력하게 개조하여 탈출하세요.
+                </p>
+
+                <!-- Theme Selection -->
+                <div class="mb-6 w-full max-w-md">
+                    <span class="text-xs font-bold text-gray-400 block mb-2">🗺️ 전장 테마 선택</span>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="selectTheme('cave')" id="btn-theme-cave" class="theme-btn py-2 px-3 rounded text-xs border border-gray-700 bg-gray-900 hover:bg-gray-800 transition text-yellow-400 font-semibold">지하 동굴 (어두운 시야)</button>
+                        <button onclick="selectTheme('city')" id="btn-theme-city" class="theme-btn py-2 px-3 rounded text-xs border border-gray-700 bg-gray-900 hover:bg-gray-800 transition">폐허 도시 (엄폐 장벽)</button>
+                        <button onclick="selectTheme('jungle')" id="btn-theme-jungle" class="theme-btn py-2 px-3 rounded text-xs border border-gray-700 bg-gray-900 hover:bg-gray-800 transition">습한 정글 (수풀과 호수)</button>
+                        <button onclick="selectTheme('snow')" id="btn-theme-snow" class="theme-btn py-2 px-3 rounded text-xs border border-gray-700 bg-gray-900 hover:bg-gray-800 transition">새하얀 설원 (빙판 슬라이드)</button>
+                    </div>
+                </div>
+
+                <button onclick="startGame()" class="pixel-text bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg transform hover:scale-105 active:scale-95 transition text-sm">
+                    게임 시작 (PLAY)
+                </button>
+            </div>
+
+            <!-- Game HUD (Top Overlay on Canvas) -->
+            <div id="hud" class="absolute top-4 left-4 right-4 pointer-events-none flex justify-between items-start z-10 hidden">
+                <!-- Player Health & Sound Meter -->
+                <div class="bg-gray-950 bg-opacity-80 p-3 rounded-lg border border-gray-800 flex flex-col gap-2 min-w-[200px]">
+                    <div>
+                        <div class="flex justify-between text-[10px] mb-1">
+                            <span class="font-bold">HP</span>
+                            <span id="hp-text">100/100</span>
+                        </div>
+                        <div class="w-full bg-gray-800 h-2.5 rounded-full overflow-hidden">
+                            <div id="hp-bar" class="bg-red-600 h-full transition-all duration-100" style="width: 100%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[10px] mb-1">
+                            <span class="font-bold text-blue-400">발소리 소음 반경</span>
+                            <span id="noise-text" class="text-blue-400">0m</span>
+                        </div>
+                        <div class="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                            <div id="noise-bar" class="bg-blue-500 h-full transition-all duration-100" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <!-- Hidden Status Indicator -->
+                    <div id="stealth-indicator" class="text-xs font-bold text-center py-0.5 rounded bg-gray-800 text-gray-400 transition">
+                        노출 상태
+                    </div>
+                </div>
+
+                <!-- Weapon Slot / Upgrades -->
+                <div class="bg-gray-950 bg-opacity-80 p-3 rounded-lg border border-gray-800 flex flex-col gap-1.5 min-w-[180px] text-right">
+                    <div>
+                        <div id="weapon-name" class="pixel-text text-xs text-yellow-400 font-bold">권총</div>
+                        <div id="ammo-count" class="text-xs text-white">탄약: 12 / ∞</div>
+                    </div>
+                    <div class="border-t border-gray-800 pt-1 text-[10px] text-gray-400">
+                        <div>공격력 Lv.<span id="stat-dmg" class="text-white">1</span></div>
+                        <div>연사력 Lv.<span id="stat-rate" class="text-white">1</span></div>
+                        <div>탄 탄속 Lv.<span id="stat-spd" class="text-white">1</span></div>
+                    </div>
+                    <div class="flex justify-end items-center gap-1.5 border-t border-gray-800 pt-1">
+                        <span class="text-yellow-400 text-xs font-bold">🔩 보유 나사:</span>
+                        <span id="screw-count" class="pixel-text text-xs text-yellow-400">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen Shake Container & Canvas -->
+            <div id="canvas-wrapper" class="relative overflow-hidden w-full aspect-[4/3] md:aspect-video max-h-[70vh]">
+                <canvas id="gameCanvas" width="960" height="540" class="w-full h-full block bg-gray-950"></canvas>
+            </div>
+
+            <!-- Game Over / Victory Overlay -->
+            <div id="end-screen" class="absolute inset-0 bg-black bg-opacity-95 flex flex-col items-center justify-center z-20 p-6 text-center hidden">
+                <h2 id="end-title" class="pixel-text text-3xl text-red-600 mb-2">GAME OVER</h2>
+                <p id="end-subtitle" class="text-gray-300 text-sm mb-6">모든 사람이 감염되었거나 당신이 패배했습니다.</p>
+                
+                <div class="bg-gray-900 border border-gray-800 rounded p-4 mb-6 w-full max-w-sm text-left text-xs space-y-2">
+                    <div class="flex justify-between"><span>처치한 좀비 수:</span> <span id="stat-zombie-kills" class="font-bold text-red-500">0</span></div>
+                    <div class="flex justify-between"><span>감염에서 지켜낸 사람 수:</span> <span id="stat-saved-humans" class="font-bold text-green-500">0</span></div>
+                    <div class="flex justify-between"><span>최종 보유한 나사:</span> <span id="stat-total-screws" class="font-bold text-yellow-500">0</span></div>
+                    <div class="flex justify-between"><span>최종 무기 단계:</span> <span id="stat-max-weapon" class="font-bold text-blue-400">Pistol</span></div>
+                </div>
+
+                <button onclick="restartToMenu()" class="pixel-text bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded shadow transition text-xs">
+                    메인 메뉴로 이동
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AUDIO SYNTH & GAME CODE -->
+    <script>
+        
+        // Simple Audio Synthesizer using Web Audio API (Fully self-contained, no external assets needed!)
+        const AudioSynth = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            },
+            play(type, freq, duration, vol = 0.1, ramp = true) {
+                this.init();
+                if (!this.ctx) return;
+                
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                
+                osc.type = type; // 'sine', 'square', 'sawtooth', 'triangle'
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                
+                gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+                if (ramp) {
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+                } else {
+                    gain.gain.setValueAtTime(0.001, this.ctx.currentTime + duration);
+                }
+                
+                osc.start();
+                osc.stop(this.ctx.currentTime + duration);
+            },
+            playShoot(weaponType) {
+                switch(weaponType) {
+                    case 'pistol':
+                        this.play('triangle', 380, 0.15, 0.25);
+                        this.play('sawtooth', 120, 0.1, 0.15);
+                        break;
+                    case 'shotgun':
+                        this.play('sawtooth', 80, 0.3, 0.4);
+                        this.play('triangle', 180, 0.2, 0.3);
+                        break;
+                    case 'machine_gun':
+                        this.play('triangle', 260, 0.08, 0.2);
+                        this.play('sawtooth', 90, 0.06, 0.15);
+                        break;
+                    case 'flamethrower':
+                        // Continuous short noise-like sound
+                        this.play('sawtooth', 50 + Math.random() * 80, 0.1, 0.08);
+                        break;
+                    case 'rifle':
+                        this.play('sawtooth', 150, 0.35, 0.3);
+                        this.play('triangle', 320, 0.2, 0.2);
+                        break;
+                    case 'bow':
+                        this.play('triangle', 440, 0.1, 0.1); // Crisp short twang
+                        break;
+                }
+            },
+            playHit() {
+                this.play('triangle', 120 + Math.random() * 80, 0.1, 0.15);
+            },
+            playSplat() {
+                this.play('sawtooth', 70, 0.2, 0.2);
+            },
+            playUpgrade() {
+                const now = this.ctx ? this.ctx.currentTime : 0;
+                this.play('sine', 300, 0.1, 0.15);
+                setTimeout(() => this.play('sine', 450, 0.1, 0.15), 100);
+                setTimeout(() => this.play('sine', 600, 0.2, 0.2), 200);
+            },
+            playInfect() {
+                // Growly low slide down
+                this.init();
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.6);
+                gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.6);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.6);
+            },
+            playScream() {
+                this.play('sawtooth', 600, 0.4, 0.1);
+            }
+        };
+
+
+        // Game configuration
+        const CANVAS_WIDTH = 960;
+        const CANVAS_HEIGHT = 540;
+        const WORLD_WIDTH = 2400;
+        const WORLD_HEIGHT = 1800;
+
+        // Theme Definitions
+        const THEMES = {
+            cave: {
+                bgColor: '#1a191c',
+                wallColor: '#2b2a2e',
+                obstacleColor: '#3c3a40',
+                hidingColor: 'rgba(56, 54, 61, 0.35)',
+                ambientLight: 0.08, // Very dark flashlight view!
+                floorDetails: ['#121113', '#1e1d20']
+            },
+            city: {
+                bgColor: '#3a3d45',
+                wallColor: '#545963',
+                obstacleColor: '#25272b',
+                hidingColor: 'rgba(74, 117, 89, 0.35)', // Some bushes in the concrete jungle
+                ambientLight: 0.9,
+                floorDetails: ['#32353c', '#42454f']
+            },
+            jungle: {
+                bgColor: '#274e13',
+                wallColor: '#1d3b0e',
+                obstacleColor: '#0b5394', // Blue lakes!
+                hidingColor: 'rgba(39, 110, 39, 0.6)', // Dense green grass hiding spots
+                ambientLight: 0.85,
+                floorDetails: ['#1e3d0e', '#2e5c16']
+            },
+            snow: {
+                bgColor: '#e2ebf0',
+                wallColor: '#a1c4fd',
+                obstacleColor: '#84fab0', // Frozen slick lakes!
+                hidingColor: 'rgba(150, 180, 215, 0.4)',
+                ambientLight: 0.95,
+                floorDetails: ['#d5e0e6', '#edf3f7']
+            }
+        };
+
+        let selectedThemeId = 'jungle';
+        let theme = THEMES[selectedThemeId];
+
+        // Entity Setup Constants
+        const WEAPONS = {
+            pistol: {
+                name: "권총 (Pistol)",
+                type: "pistol",
+                damage: 4,
+                fireRate: 350, // ms
+                bulletSpeed: 11,
+                maxAmmo: 12,
+                reloadTime: 1200, // ms
+                spread: 0.03,
+                bulletsPerShot: 1,
+                silent: false
+            },
+            shotgun: {
+                name: "산탄총 (Shotgun)",
+                type: "shotgun",
+                damage: 3.5, // 5 pellets
+                fireRate: 900,
+                bulletSpeed: 9,
+                maxAmmo: 5,
+                reloadTime: 2000,
+                spread: 0.3,
+                bulletsPerShot: 5,
+                silent: false
+            },
+            machine_gun: {
+                name: "머신건 (Machine Gun)",
+                type: "machine_gun",
+                damage: 2.8,
+                fireRate: 110,
+                bulletSpeed: 13,
+                maxAmmo: 30,
+                reloadTime: 1800,
+                spread: 0.08,
+                bulletsPerShot: 1,
+                silent: false
+            },
+            flamethrower: {
+                name: "화염방사기 (Flamethrower)",
+                type: "flamethrower",
+                damage: 1.5, // Piercing ticking damage
+                fireRate: 50,
+                bulletSpeed: 6,
+                maxAmmo: 100,
+                reloadTime: 2500,
+                spread: 0.4,
+                bulletsPerShot: 1,
+                silent: false
+            },
+            rifle: {
+                name: "장총 (Rifle)",
+                type: "rifle",
+                damage: 14,
+                fireRate: 1100,
+                bulletSpeed: 17,
+                maxAmmo: 5,
+                reloadTime: 1500,
+                spread: 0.01,
+                bulletsPerShot: 1,
+                silent: false
+            },
+            bow: {
+                name: "활 (Silent Bow)",
+                type: "bow",
+                damage: 6.5,
+                fireRate: 550,
+                bulletSpeed: 12,
+                maxAmmo: 15,
+                reloadTime: 1000,
+                spread: 0.02,
+                bulletsPerShot: 1,
+                silent: true // Totally quiet, won't alert zombies in noise range!
+            }
+        };
+
+        // Math Helpers
+        const MathUtils = {
+            dist(x1, y1, x2, y2) {
+                return Math.hypot(x2 - x1, y2 - y1);
+            },
+            angle(x1, y1, x2, y2) {
+                return Math.atan2(y2 - y1, x2 - x1);
+            },
+            clamp(val, min, max) {
+                return Math.max(min, Math.min(max, val));
+            },
+            randomRange(min, max) {
+                return Math.random() * (max - min) + min;
+            }
+        };
+
+
+        // Global Game Engine State
+        const State = {
+            player: null,
+            entities: [],
+            bullets: [],
+            particles: [],
+            hideouts: [],
+            obstacles: [],
+            items: [],
+            bloodSplatters: [],
+            
+            keys: {},
+            mouse: { x: 0, y: 0, screenX: 0, screenY: 0, down: false },
+            camera: { x: 0, y: 0, targetX: 0, targetY: 0, shake: 0 },
+            
+            gameRunning: false,
+            kills: 0,
+            savedHumans: 0,
+            screws: 0,
+            
+            logs: [],
+            addLog(msg, color = 'text-gray-300') {
+                const logPanel = document.getElementById('log-panel');
+                if (!logPanel) return;
+                const p = document.createElement('p');
+                p.className = `text-[10px] ${color}`;
+                p.innerText = `[${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}] ${msg}`;
+                logPanel.appendChild(p);
+                logPanel.scrollTop = logPanel.scrollHeight;
+                
+                // Limit logs to keep UI fast
+                while (logPanel.children.length > 25) {
+                    logPanel.removeChild(logPanel.firstChild);
+                }
+            }
+        };
+
+        // Player Class Definition
+        class Player {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 16;
+                this.hp = 100;
+                this.maxHp = 100;
+                this.speed = 3.5;
+                this.stamina = 100;
+                this.angle = 0;
+                this.isHidden = false;
+                this.noiseRadius = 0;
+                this.targetNoiseRadius = 0;
+                
+                // Weapon State
+                this.weapon = JSON.parse(JSON.stringify(WEAPONS.pistol)); // deep copy starting weapon
+                this.ammo = this.weapon.maxAmmo;
+                this.reloading = false;
+                this.reloadTimer = 0;
+                this.lastShotTime = 0;
+
+                // Screws and upgrade levels
+                this.screwCount = 0;
+                this.upgrades = {
+                    damage: 1,
+                    fireRate: 1,
+                    speed: 1
+                };
+            }
+
+            update() {
+                // Movement
+                let dx = 0;
+                let dy = 0;
+                if (State.keys['KeyW'] || State.keys['ArrowUp']) dy -= 1;
+                if (State.keys['KeyS'] || State.keys['ArrowDown']) dy += 1;
+                if (State.keys['KeyA'] || State.keys['ArrowLeft']) dx -= 1;
+                if (State.keys['KeyD'] || State.keys['ArrowRight']) dx += 1;
+
+                // Normalize movement vector
+                let moveLen = Math.hypot(dx, dy);
+                let currentSpeed = this.speed;
+
+                // Slippery physics in Snow theme
+                if (selectedThemeId === 'snow') {
+                    // Check if standing on Ice obstacles
+                    let onIce = false;
+                    for (let obs of State.obstacles) {
+                        if (obs.type === 'ice' && MathUtils.dist(this.x, this.y, obs.x, obs.y) < obs.radius) {
+                            onIce = true;
+                            break;
+                        }
+                    }
+                    if (onIce) {
+                        currentSpeed *= 1.4; // Slipping fast!
+                    }
+                }
+
+                // Check lake collision / speed reduction in Jungle
+                let onLake = false;
+                for (let obs of State.obstacles) {
+                    if (obs.type === 'lake' && MathUtils.dist(this.x, this.y, obs.x, obs.y) < obs.radius) {
+                        onLake = true;
+                        break;
+                    }
+                }
+                if (onLake) {
+                    currentSpeed *= 0.45; // Slow down in lake
+                }
+
+                // Stamina & Sprinting
+                const isSprinting = State.keys['ShiftLeft'] && moveLen > 0 && this.stamina > 10;
+                if (isSprinting) {
+                    currentSpeed *= 1.6;
+                    this.stamina = Math.max(0, this.stamina - 0.5);
+                } else {
+                    this.stamina = Math.min(100, this.stamina + 0.2);
+                }
+
+                if (moveLen > 0) {
+                    dx /= moveLen;
+                    dy /= moveLen;
+                    this.x += dx * currentSpeed;
+                    this.y += dy * currentSpeed;
+
+                    // Generate Noise
+                    this.targetNoiseRadius = isSprinting ? 280 : 120;
+                } else {
+                    this.targetNoiseRadius = 0;
+                }
+
+                // Smooth out noise animation transition
+                this.noiseRadius += (this.targetNoiseRadius - this.noiseRadius) * 0.1;
+
+                // Keep Player in World Bounds
+                this.x = MathUtils.clamp(this.x, this.radius, WORLD_WIDTH - this.radius);
+                this.y = MathUtils.clamp(this.y, this.radius, WORLD_HEIGHT - this.radius);
+
+                // Handle Obstacle Collisions (excluding Lake which slows or Ice which slips)
+                for (let obs of State.obstacles) {
+                    if (obs.type !== 'lake' && obs.type !== 'ice') {
+                        let dist = MathUtils.dist(this.x, this.y, obs.x, obs.y);
+                        let minDist = this.radius + obs.radius;
+                        if (dist < minDist) {
+                            let angle = MathUtils.angle(obs.x, obs.y, this.x, this.y);
+                            this.x = obs.x + Math.cos(angle) * minDist;
+                            this.y = obs.y + Math.sin(angle) * minDist;
+                        }
+                    }
+                }
+
+                // Aiming Angle (Facing Mouse)
+                const worldMouseX = State.mouse.screenX + State.camera.x;
+                const worldMouseY = State.mouse.screenY + State.camera.y;
+                this.angle = MathUtils.angle(this.x, this.y, worldMouseX, worldMouseY);
+
+                // Stealth check
+                let inHideout = false;
+                for (let h of State.hideouts) {
+                    if (MathUtils.dist(this.x, this.y, h.x, h.y) < h.radius) {
+                        inHideout = true;
+                        break;
+                    }
+                }
+                this.isHidden = inHideout;
+
+                // Auto reload if empty
+                if (this.ammo === 0 && !this.reloading) {
+                    this.reload();
+                }
+
+                // Handle Reloading logic
+                if (this.reloading) {
+                    this.reloadTimer -= 16.67; // approx frame time
+                    if (this.reloadTimer <= 0) {
+                        this.ammo = this.weapon.maxAmmo;
+                        this.reloading = false;
+                    }
+                }
+
+                // Shooting Trigger (Machine gun holds, others click)
+                if (State.mouse.down && !this.reloading) {
+                    this.shoot();
+                }
+            }
+
+            shoot() {
+                const now = Date.now();
+                const actualCooldown = this.weapon.fireRate * Math.pow(0.85, this.upgrades.fireRate - 1);
+                
+                if (now - this.lastShotTime >= actualCooldown) {
+                    if (this.ammo > 0) {
+                        this.ammo--;
+                        this.lastShotTime = now;
+
+                        // Sound synthesis
+                        AudioSynth.playShoot(this.weapon.type);
+
+                        // Noise flash on shoot (Noises from firearm are HUGE unless bow!)
+                        if (!this.weapon.silent) {
+                            this.noiseRadius = 500;
+                        }
+
+                        // Projectiles generation
+                        const actualSpeed = this.weapon.bulletSpeed * Math.pow(1.15, this.upgrades.speed - 1);
+                        const actualDmg = this.weapon.damage * Math.pow(1.15, this.upgrades.damage - 1);
+
+                        for (let i = 0; i < this.weapon.bulletsPerShot; i++) {
+                            // Calculate spread offset angle
+                            let angleOffset = MathUtils.randomRange(-this.weapon.spread, this.weapon.spread);
+                            let bulletAngle = this.angle + angleOffset;
+                            
+                            State.bullets.push(new Bullet(
+                                this.x + Math.cos(this.angle) * this.radius,
+                                this.y + Math.sin(this.angle) * this.radius,
+                                bulletAngle,
+                                actualSpeed,
+                                actualDmg,
+                                this.weapon.type === 'flamethrower', // piercing/fade
+                                this.weapon.type === 'bow' // visual arrow
+                            ));
+                        }
+
+                        // Camera Shake based on weapon
+                        if (this.weapon.type === 'shotgun') State.camera.shake = 15;
+                        else if (this.weapon.type === 'rifle') State.camera.shake = 12;
+                        else if (this.weapon.type === 'machine_gun') State.camera.shake = 4;
+                        else State.camera.shake = 2;
+
+                        // Flashlight/Muzzle particles
+                        for (let p = 0; p < 5; p++) {
+                            State.particles.push(new Particle(
+                                this.x + Math.cos(this.angle) * this.radius,
+                                this.y + Math.sin(this.angle) * this.radius,
+                                this.weapon.type === 'flamethrower' ? '#ff6600' : '#ffea00',
+                                this.angle + MathUtils.randomRange(-0.3, 0.3),
+                                MathUtils.randomRange(2, 6)
+                            ));
+                        }
+                    }
+                }
+            }
+
+            reload() {
+                if (this.reloading || this.ammo === this.weapon.maxAmmo) return;
+                this.reloading = true;
+                this.reloadTimer = this.weapon.reloadTime;
+                State.addLog("무기 재장전 중...", "text-yellow-400");
+                AudioSynth.play('sine', 200, 0.2, 0.1);
+                setTimeout(() => AudioSynth.play('sine', 350, 0.1, 0.1), 300);
+            }
+
+            draw(ctx) {
+                // Drawing sound circle if moving or shooting
+                if (this.noiseRadius > 5 && !this.isHidden) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.noiseRadius, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(59, 130, 246, ${MathUtils.clamp(0.2 - (this.noiseRadius / 600), 0.01, 0.2)})`;
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                }
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                // Body Shadow
+                ctx.beginPath();
+                ctx.arc(-2, 2, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fill();
+
+                // Player Circle Body
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#3b82f6'; // Blue hero
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = '#1e3a8a';
+                ctx.stroke();
+                ctx.fill();
+
+                // Backpack (Visual addition)
+                ctx.fillStyle = '#1e40af';
+                ctx.fillRect(-this.radius, -this.radius / 2, 6, this.radius);
+
+                // Flashlight cone (Particularly amazing in Cave/Dark rooms)
+                let gradient = ctx.createRadialGradient(0, 0, 10, 200, 0, 250);
+                gradient.addColorStop(0, 'rgba(255,255,220,0.25)');
+                gradient.addColorStop(1, 'rgba(255,255,220,0)');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.moveTo(this.radius, 0);
+                ctx.lineTo(250, -100);
+                ctx.lineTo(250, 100);
+                ctx.closePath();
+                ctx.fill();
+
+                // Drawing Gun Overlay
+                ctx.fillStyle = '#475569';
+                ctx.strokeStyle = '#1e293b';
+                ctx.lineWidth = 2;
+                if (this.weapon.type === 'shotgun' || this.weapon.type === 'rifle') {
+                    ctx.fillRect(5, -4, 22, 6);
+                } else if (this.weapon.type === 'machine_gun' || this.weapon.type === 'flamethrower') {
+                    ctx.fillRect(5, -3, 18, 5);
+                } else if (this.weapon.type === 'bow') {
+                    ctx.strokeStyle = '#d97706';
+                    ctx.beginPath();
+                    ctx.arc(10, 0, 15, -Math.PI/3, Math.PI/3);
+                    ctx.stroke();
+                } else {
+                    ctx.fillRect(8, -2.5, 10, 4); // Pistol
+                }
+
+                ctx.restore();
+
+                // Stamina indicator ring around player
+                if (this.stamina < 100) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius + 5, -Math.PI / 2, (this.stamina / 100) * Math.PI * 2 - Math.PI / 2);
+                    ctx.strokeStyle = '#10b981';
+                    ctx.lineWidth = 2.5;
+                    ctx.stroke();
+                }
+            }
+        }
+
+
+        // Human NPC Class
+        class Human {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 15;
+                this.speed = 1.3;
+                this.angle = Math.random() * Math.PI * 2;
+                this.wanderTimer = 0;
+                this.isInfected = false;
+                this.infectionTimer = 600; // ~10 seconds countdown before mutation
+                this.panic = false;
+                this.panicTimer = 0;
+            }
+
+            update() {
+                if (this.isInfected) {
+                    // Flash green and wander chaotically in panic
+                    this.infectionTimer--;
+                    if (this.infectionTimer <= 0) {
+                        this.mutate();
+                        return;
+                    }
+                    this.angle += MathUtils.randomRange(-0.2, 0.2);
+                    let currentSpeed = this.speed * 1.5;
+                    this.x += Math.cos(this.angle) * currentSpeed;
+                    this.y += Math.sin(this.angle) * currentSpeed;
+                } else {
+                    // Standard civilian wander AI
+                    this.wanderTimer--;
+                    if (this.wanderTimer <= 0) {
+                        this.angle = Math.random() * Math.PI * 2;
+                        this.wanderTimer = MathUtils.randomRange(100, 300);
+                        this.panic = false;
+                    }
+
+                    // Scan for danger
+                    let nearestZombie = null;
+                    let minDist = 180;
+                    for (let entity of State.entities) {
+                        if (entity instanceof Zombie) {
+                            let dist = MathUtils.dist(this.x, this.y, entity.x, entity.y);
+                            if (dist < minDist) {
+                                minDist = dist;
+                                nearestZombie = entity;
+                            }
+                        }
+                    }
+
+                    if (nearestZombie) {
+                        // Panic flight!
+                        this.panic = true;
+                        this.angle = MathUtils.angle(nearestZombie.x, nearestZombie.y, this.x, this.y);
+                        this.speed = 2.4; // Run faster
+                    } else {
+                        this.speed = 1.3;
+                    }
+
+                    this.x += Math.cos(this.angle) * this.speed;
+                    this.y += Math.sin(this.angle) * this.speed;
+                }
+
+                // World bound clamp
+                this.x = MathUtils.clamp(this.x, this.radius, WORLD_WIDTH - this.radius);
+                this.y = MathUtils.clamp(this.y, this.radius, WORLD_HEIGHT - this.radius);
+
+                // Handle Obstacle Collisions
+                for (let obs of State.obstacles) {
+                    if (obs.type !== 'lake' && obs.type !== 'ice') {
+                        let dist = MathUtils.dist(this.x, this.y, obs.x, obs.y);
+                        let minDist = this.radius + obs.radius;
+                        if (dist < minDist) {
+                            let angle = MathUtils.angle(obs.x, obs.y, this.x, this.y);
+                            this.x = obs.x + Math.cos(angle) * minDist;
+                            this.y = obs.y + Math.sin(angle) * minDist;
+                        }
+                    }
+                }
+            }
+
+            mutate() {
+                // Mutate into a random dangerous zombie!
+                const roll = Math.random();
+                let zombieType = 'regular';
+                if (roll < 0.3) zombieType = 'speed';
+                else if (roll < 0.5) zombieType = 'four_legged';
+                else if (roll < 0.65) zombieType = 'giant';
+
+                State.entities.push(new Zombie(this.x, this.y, zombieType));
+                
+                // Exploding toxic slime particles
+                for (let i = 0; i < 15; i++) {
+                    State.particles.push(new Particle(this.x, this.y, '#16a34a', Math.random() * Math.PI * 2, MathUtils.randomRange(3, 8)));
+                }
+
+                // Splat audio
+                AudioSynth.playInfect();
+                State.addLog(`감염되었던 시민이 [${zombieType.toUpperCase()}] 좀비로 완전히 변했습니다!`, 'text-red-500 font-semibold');
+                
+                // Remove self
+                const idx = State.entities.indexOf(this);
+                if (idx !== -1) State.entities.splice(idx, 1);
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // Render shadow
+                ctx.beginPath();
+                ctx.arc(-2, 2, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fill();
+
+                // Human Body (Brownish-purple)
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                
+                if (this.isInfected) {
+                    // Pulsing toxic green look
+                    let scale = Math.abs(Math.sin(Date.now() / 150));
+                    ctx.fillStyle = `rgb(${100 - scale * 60}, ${180 + scale * 75}, 100)`;
+                    ctx.strokeStyle = '#15803d';
+                } else {
+                    ctx.fillStyle = this.panic ? '#ea580c' : '#f59e0b'; // Orange in panic, Yellow normally
+                    ctx.strokeStyle = '#b45309';
+                }
+                
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+                ctx.fill();
+
+                // Eyes
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(5, -4, 2, 2);
+                ctx.fillRect(5, 2, 2, 2);
+
+                ctx.restore();
+
+                // Infection progress circle overlay
+                if (this.isInfected) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius + 6, -Math.PI/2, (this.infectionTimer / 600) * Math.PI * 2 - Math.PI/2);
+                    ctx.strokeStyle = '#22c55e';
+                    ctx.lineWidth = 2.5;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // Zombie Class (4 Distinct Types)
+        class Zombie {
+            constructor(x, y, type = 'regular') {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.knockbackX = 0;
+                this.knockbackY = 0;
+
+                // Configure specific parameters for 4 Zombie Types
+                // Core: HP 10 for Regular zombie (as requested by user)
+                switch(type) {
+                    case 'speed':
+                        this.radius = 13;
+                        this.maxHp = 6;
+                        this.speed = 2.6;
+                        this.color = '#dc2626'; // Bright Red
+                        this.strokeColor = '#7f1d1d';
+                        this.contactDamage = 0.5;
+                        break;
+                    case 'giant':
+                        this.radius = 24;
+                        this.maxHp = 35;
+                        this.speed = 0.8;
+                        this.color = '#14532d'; // Giant Dark Green
+                        this.strokeColor = '#052e16';
+                        this.contactDamage = 1.8;
+                        break;
+                    case 'four_legged':
+                        this.radius = 14;
+                        this.maxHp = 11;
+                        this.speed = 1.1; // Slow base speed but leaps
+                        this.color = '#a855f7'; // Purple stalker
+                        this.strokeColor = '#581c87';
+                        this.contactDamage = 0.9;
+                        this.leapTimer = 180; // Burst dash timer
+                        this.dashDuration = 0;
+                        break;
+                    case 'regular':
+                    default:
+                        this.radius = 16;
+                        this.maxHp = 10; // Exactly 10 HP as defined in user's prompt!
+                        this.speed = 1.5;
+                        this.color = '#15803d'; // Toxic green
+                        this.strokeColor = '#14532d';
+                        this.contactDamage = 0.6;
+                        break;
+                }
+
+                this.hp = this.maxHp;
+                this.angle = Math.random() * Math.PI * 2;
+                this.state = 'wander'; // wander, chase, investigate
+                this.targetX = x;
+                this.targetY = y;
+                this.investigateTimer = 0;
+            }
+
+            update() {
+                // Apply knockback decay
+                this.x += this.knockbackX;
+                this.y += this.knockbackY;
+                this.knockbackX *= 0.85;
+                this.knockbackY *= 0.85;
+
+                // Behavior Engine
+                let target = null;
+                let targetDist = Infinity;
+
+                // Locate closest target: Can chase Player or other Humans!
+                // Primary: Player (unless player is hidden!)
+                if (!State.player.isHidden) {
+                    let d = MathUtils.dist(this.x, this.y, State.player.x, State.player.y);
+                    // Check Zombie visual sense range
+                    if (d < 300) {
+                        target = State.player;
+                        targetDist = d;
+                        this.state = 'chase';
+                    }
+                }
+
+                // Secondary target: Nearby Humans (zombies actively try to infect everyone!)
+                if (this.state !== 'chase') {
+                    for (let entity of State.entities) {
+                        if (entity instanceof Human && !entity.isInfected) {
+                            let d = MathUtils.dist(this.x, this.y, entity.x, entity.y);
+                            if (d < 220 && d < targetDist) {
+                                target = entity;
+                                targetDist = d;
+                                this.state = 'chase';
+                            }
+                        }
+                    }
+                }
+
+                // Sensory check: Did player generate noise within range?
+                if (this.state !== 'chase' && State.player.noiseRadius > 0 && !State.player.isHidden) {
+                    let playerDist = MathUtils.dist(this.x, this.y, State.player.x, State.player.y);
+                    if (playerDist < State.player.noiseRadius + 50) {
+                        this.state = 'investigate';
+                        this.targetX = State.player.x + MathUtils.randomRange(-20, 20);
+                        this.targetY = State.player.y + MathUtils.randomRange(-20, 20);
+                        this.investigateTimer = 200; // Stay alert for 200 frames
+                    }
+                }
+
+                // Apply AI path actions
+                let currentSpeed = this.speed;
+
+                if (this.type === 'four_legged') {
+                    // Leap mechanics
+                    this.leapTimer--;
+                    if (this.leapTimer <= 0 && this.state === 'chase') {
+                        this.dashDuration = 45; // Dash speed for 45 frames
+                        this.leapTimer = 220; // reset
+                    }
+                    if (this.dashDuration > 0) {
+                        this.dashDuration--;
+                        currentSpeed *= 3.3; // Leap burst!
+                    }
+                }
+
+                if (this.state === 'chase' && target) {
+                    this.angle = MathUtils.angle(this.x, this.y, target.x, target.y);
+                    this.x += Math.cos(this.angle) * currentSpeed;
+                    this.y += Math.sin(this.angle) * currentSpeed;
+
+                    // Contact collision / attack
+                    if (targetDist < this.radius + target.radius) {
+                        if (target instanceof Player) {
+                            target.hp = Math.max(0, target.hp - this.contactDamage);
+                            State.camera.shake = 5;
+                            AudioSynth.playHit();
+                        } else if (target instanceof Human && !target.isInfected) {
+                            target.isInfected = true;
+                            AudioSynth.playScream();
+                            State.addLog("시민이 물려서 감염되기 시작했습니다!!", "text-red-400 font-bold animate-pulse");
+                        }
+                    }
+                } else if (this.state === 'investigate') {
+                    this.angle = MathUtils.angle(this.x, this.y, this.targetX, this.targetY);
+                    this.x += Math.cos(this.angle) * currentSpeed;
+                    this.y += Math.sin(this.angle) * currentSpeed;
+
+                    this.investigateTimer--;
+                    if (this.investigateTimer <= 0 || MathUtils.dist(this.x, this.y, this.targetX, this.targetY) < 30) {
+                        this.state = 'wander';
+                    }
+                } else {
+                    // Slow wander around
+                    this.angle += MathUtils.randomRange(-0.06, 0.06);
+                    this.x += Math.cos(this.angle) * (currentSpeed * 0.7);
+                    this.y += Math.sin(this.angle) * (currentSpeed * 0.7);
+                }
+
+                // Bounds restriction
+                this.x = MathUtils.clamp(this.x, this.radius, WORLD_WIDTH - this.radius);
+                this.y = MathUtils.clamp(this.y, this.radius, WORLD_HEIGHT - this.radius);
+
+                // Obstacle Collisions
+                for (let obs of State.obstacles) {
+                    if (obs.type !== 'lake' && obs.type !== 'ice') {
+                        let dist = MathUtils.dist(this.x, this.y, obs.x, obs.y);
+                        let minDist = this.radius + obs.radius;
+                        if (dist < minDist) {
+                            let angle = MathUtils.angle(obs.x, obs.y, this.x, this.y);
+                            this.x = obs.x + Math.cos(angle) * minDist;
+                            this.y = obs.y + Math.sin(angle) * minDist;
+                        }
+                    }
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                // Shadow
+                ctx.beginPath();
+                ctx.arc(-3, 3, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.35)';
+                ctx.fill();
+
+                // Zombie Body
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.strokeStyle = this.strokeColor;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.fill();
+
+                // Claws/Teeth detailing based on type
+                ctx.fillStyle = '#ffffff';
+                if (this.type === 'giant') {
+                    // Big spiked teeth / muscular details
+                    ctx.fillRect(8, -6, 3, 3);
+                    ctx.fillRect(8, 3, 3, 3);
+                } else if (this.type === 'four_legged') {
+                    ctx.fillStyle = '#f43f5e';
+                    ctx.beginPath();
+                    ctx.moveTo(8, -5);
+                    ctx.lineTo(15, -2);
+                    ctx.lineTo(8, 0);
+                    ctx.moveTo(8, 0);
+                    ctx.lineTo(15, 2);
+                    ctx.lineTo(8, 5);
+                    ctx.stroke();
+                } else {
+                    ctx.fillRect(5, -3, 2, 2);
+                    ctx.fillRect(5, 1, 2, 2);
+                }
+
+                ctx.restore();
+
+                // Zombie HP bar
+                if (this.hp < this.maxHp) {
+                    const barW = this.radius * 1.8;
+                    const barH = 4;
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                    ctx.fillRect(this.x - barW/2, this.y - this.radius - 8, barW, barH);
+                    
+                    const hpPct = Math.max(0, this.hp / this.maxHp);
+                    ctx.fillStyle = '#ef4444';
+                    ctx.fillRect(this.x - barW/2, this.y - this.radius - 8, barW * hpPct, barH);
+                }
+            }
+        }
+
+
+        // Bullet Class
+        class Bullet {
+            constructor(x, y, angle, speed, damage, isFlame = false, isArrow = false) {
+                this.x = x;
+                this.y = y;
+                this.angle = angle;
+                this.speed = speed;
+                this.damage = damage;
+                this.isFlame = isFlame;
+                this.isArrow = isArrow;
+                this.active = true;
+                this.life = isFlame ? 18 : 120; // Flames fade out fast
+                this.size = isFlame ? 10 : (isArrow ? 3 : 4);
+            }
+
+            update() {
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+                this.life--;
+
+                if (this.life <= 0) {
+                    this.active = false;
+                }
+
+                // Obstacle Collision
+                for (let obs of State.obstacles) {
+                    if (obs.type !== 'lake' && obs.type !== 'ice') {
+                        if (MathUtils.dist(this.x, this.y, obs.x, obs.y) < obs.radius) {
+                            this.active = false;
+                            
+                            // Hit debris
+                            for (let i = 0; i < 4; i++) {
+                                State.particles.push(new Particle(this.x, this.y, '#94a3b8', Math.random() * Math.PI * 2, MathUtils.randomRange(1, 3)));
+                            }
+                        }
+                    }
+                }
+
+                // Bound checks
+                if (this.x < 0 || this.x > WORLD_WIDTH || this.y < 0 || this.y > WORLD_HEIGHT) {
+                    this.active = false;
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                if (this.isFlame) {
+                    // Flaming particle expansion
+                    let r = MathUtils.clamp(14 - (this.life / 1.5), 2, 16);
+                    let alpha = this.life / 18;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, r, 0, Math.PI * 2);
+                    let grad = ctx.createRadialGradient(0,0,1, 0,0, r);
+                    grad.addColorStop(0, `rgba(255, 230, 0, ${alpha})`);
+                    grad.addColorStop(0.4, `rgba(255, 90, 0, ${alpha * 0.8})`);
+                    grad.addColorStop(1, `rgba(255, 0, 0, 0)`);
+                    ctx.fillStyle = grad;
+                    ctx.fill();
+                } else if (this.isArrow) {
+                    // Sleek Arrow Design
+                    ctx.strokeStyle = '#d97706';
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath();
+                    ctx.moveTo(-10, 0);
+                    ctx.lineTo(8, 0);
+                    ctx.stroke();
+                    // Arrow feather head
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.moveTo(-10, -3);
+                    ctx.lineTo(-6, 0);
+                    ctx.lineTo(-10, 3);
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    // Regular Bullet Trail
+                    ctx.fillStyle = '#ffea00';
+                    ctx.beginPath();
+                    ctx.rect(-8, -1.5, 12, 3);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // Particle System for juicy debris, blood, fire sparks
+        class Particle {
+            constructor(x, y, color, angle, speed, decay = 0.94) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.size = MathUtils.randomRange(2.5, 5);
+                this.life = 1.0;
+                this.decay = decay;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= this.decay;
+                this.vy *= this.decay;
+                this.life -= 0.022;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.life);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // persistent ground blood splatters
+        class BloodSplatter {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.color = Math.random() < 0.35 ? '#7f1d1d' : '#991b1b'; // deep crimson
+                this.size = MathUtils.randomRange(15, 32);
+                this.points = [];
+                
+                // Create random polygon representing blood splash
+                const count = MathUtils.randomRange(6, 12);
+                for (let i = 0; i < count; i++) {
+                    const ang = (i / count) * Math.PI * 2;
+                    const r = MathUtils.randomRange(this.size * 0.4, this.size);
+                    this.points.push({
+                        x: Math.cos(ang) * r,
+                        y: Math.sin(ang) * r
+                    });
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.moveTo(this.points[0].x, this.points[0].y);
+                for (let p of this.points) {
+                    ctx.lineTo(p.x, p.y);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+
+        // Drops / Items system
+        class LootItem {
+            constructor(x, y, type = 'screw', weaponData = null) {
+                this.x = x;
+                this.y = y;
+                this.type = type; // 'screw' or 'weapon'
+                this.weaponData = weaponData;
+                this.radius = 12;
+                this.pulse = 0;
+            }
+
+            update() {
+                this.pulse += 0.08;
+            }
+
+            draw(ctx) {
+                this.update();
+                const bounce = Math.sin(this.pulse) * 3;
+                
+                ctx.save();
+                ctx.translate(this.x, this.y + bounce);
+
+                // Halo glow
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius + 6, 0, Math.PI * 2);
+                ctx.fillStyle = this.type === 'screw' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(59, 130, 246, 0.2)';
+                ctx.fill();
+
+                if (this.type === 'screw') {
+                    // Draw mini industrial screw
+                    ctx.fillStyle = '#eab308'; // Shiny gold
+                    ctx.strokeStyle = '#854d0e';
+                    ctx.lineWidth = 1.5;
+                    ctx.fillRect(-3, -6, 6, 12);
+                    ctx.fillRect(-6, -8, 12, 3);
+                    // Screw ridges
+                    ctx.fillStyle = '#a16207';
+                    ctx.fillRect(-3, -2, 6, 1.5);
+                    ctx.fillRect(-3, 2, 6, 1.5);
+                } else {
+                    // Draw a stylized wooden chest containing weapon
+                    ctx.fillStyle = '#78350f'; // wood
+                    ctx.strokeStyle = '#1e1b4b';
+                    ctx.lineWidth = 2;
+                    ctx.fillRect(-8, -6, 16, 12);
+                    // Gold lining/locks
+                    ctx.fillStyle = '#eab308';
+                    ctx.fillRect(-2, -1, 4, 3);
+                    ctx.fillRect(-8, -6, 2, 12);
+                    ctx.fillRect(6, -6, 2, 12);
+                }
+
+                ctx.restore();
+            }
+        }
+
+
+        // Procedural Map & Setup Builder
+        const MapBuilder = {
+            generate(themeId) {
+                selectedThemeId = themeId;
+                theme = THEMES[themeId];
+                
+                State.obstacles = [];
+                State.hideouts = [];
+                State.items = [];
+                State.bloodSplatters = [];
+
+                State.addLog(`신규 테마 [${themeId.toUpperCase()}] 생성 중...`, 'text-blue-400 font-bold');
+
+                // 1. Generate Hideouts (Safe Zones / Item Spawns)
+                // Let's create 6 to 8 Hideouts strategically positioned in the world
+                const numHideouts = 8;
+                for (let i = 0; i < numHideouts; i++) {
+                    let rx = MathUtils.randomRange(150, WORLD_WIDTH - 150);
+                    let ry = MathUtils.randomRange(150, WORLD_HEIGHT - 150);
+                    
+                    // Avoid overlapping too close
+                    let overlap = false;
+                    for (let h of State.hideouts) {
+                        if (MathUtils.dist(rx, ry, h.x, h.y) < 300) overlap = true;
+                    }
+                    if (overlap) {
+                        i--;
+                        continue;
+                    }
+
+                    // Dynamic classification of hideout (Caves, Tents, Forest)
+                    let hType = 'forest';
+                    if (themeId === 'cave') hType = 'sub-chamber';
+                    else if (themeId === 'city') hType = 'abandoned_building';
+                    else if (themeId === 'snow') hType = 'igloo';
+
+                    State.hideouts.push({
+                        x: rx,
+                        y: ry,
+                        radius: MathUtils.randomRange(100, 150),
+                        type: hType
+                    });
+
+                    // Drop starting Screws and Weapons STRICTLY inside the generated Safe Hideouts
+                    const numScrews = Math.floor(MathUtils.randomRange(3, 6));
+                    for (let s = 0; s < numScrews; s++) {
+                        let itemAng = Math.random() * Math.PI * 2;
+                        let itemDist = MathUtils.randomRange(10, 80);
+                        State.items.push(new LootItem(
+                            rx + Math.cos(itemAng) * itemDist,
+                            ry + Math.sin(itemAng) * itemDist,
+                            'screw'
+                        ));
+                    }
+
+                    // Weapon drop roll inside this hideout
+                    const weaponList = Object.keys(WEAPONS).filter(w => w !== 'pistol'); // Pistol is default
+                    const randomWeaponKey = weaponList[Math.floor(Math.random() * weaponList.length)];
+                    let chestAng = Math.random() * Math.PI * 2;
+                    let chestDist = MathUtils.randomRange(40, 80);
+                    State.items.push(new LootItem(
+                        rx + Math.cos(chestAng) * chestDist,
+                        ry + Math.sin(chestAng) * chestDist,
+                        'weapon',
+                        WEAPONS[randomWeaponKey]
+                    ));
+                }
+
+                // 2. Generate Theme Obstacles
+                if (themeId === 'cave') {
+                    // Tons of dark giant stone pillars blocking paths
+                    const numRocks = 50;
+                    for (let k = 0; k < numRocks; k++) {
+                        let rx = MathUtils.randomRange(100, WORLD_WIDTH - 100);
+                        let ry = MathUtils.randomRange(100, WORLD_HEIGHT - 100);
+                        // Prevent placing on start center (around player spawn)
+                        if (MathUtils.dist(rx, ry, WORLD_WIDTH/2, WORLD_HEIGHT/2) < 250) continue;
+
+                        State.obstacles.push({
+                            x: rx,
+                            y: ry,
+                            radius: MathUtils.randomRange(30, 65),
+                            type: 'rock'
+                        });
+                    }
+                } else if (themeId === 'city') {
+                    // Concrete blocks / Abandoned car hulls
+                    const numBarriers = 45;
+                    for (let k = 0; k < numBarriers; k++) {
+                        let rx = MathUtils.randomRange(100, WORLD_WIDTH - 100);
+                        let ry = MathUtils.randomRange(100, WORLD_HEIGHT - 100);
+                        if (MathUtils.dist(rx, ry, WORLD_WIDTH/2, WORLD_HEIGHT/2) < 250) continue;
+
+                        State.obstacles.push({
+                            x: rx,
+                            y: ry,
+                            radius: MathUtils.randomRange(25, 45),
+                            type: 'barrier'
+                        });
+                    }
+                } else if (themeId === 'jungle') {
+                    // Deep toxic water pools / Lakes
+                    const numLakes = 12;
+                    for (let k = 0; k < numLakes; k++) {
+                        let rx = MathUtils.randomRange(100, WORLD_WIDTH - 100);
+                        let ry = MathUtils.randomRange(100, WORLD_HEIGHT - 100);
+                        if (MathUtils.dist(rx, ry, WORLD_WIDTH/2, WORLD_HEIGHT/2) < 300) continue;
+
+                        State.obstacles.push({
+                            x: rx,
+                            y: ry,
+                            radius: MathUtils.randomRange(80, 140),
+                            type: 'lake'
+                        });
+                    }
+                    // Additional tall jungle tree obstacles
+                    for (let t = 0; t < 30; t++) {
+                        let rx = MathUtils.randomRange(50, WORLD_WIDTH - 50);
+                        let ry = MathUtils.randomRange(50, WORLD_HEIGHT - 50);
+                        State.obstacles.push({ x: rx, y: ry, radius: MathUtils.randomRange(20, 35), type: 'tree' });
+                    }
+                } else if (themeId === 'snow') {
+                    // Ice Sheets causing speed-sliding
+                    const numIce = 15;
+                    for (let k = 0; k < numIce; k++) {
+                        let rx = MathUtils.randomRange(100, WORLD_WIDTH - 100);
+                        let ry = MathUtils.randomRange(100, WORLD_HEIGHT - 100);
+                        State.obstacles.push({
+                            x: rx,
+                            y: ry,
+                            radius: MathUtils.randomRange(90, 150),
+                            type: 'ice'
+                        });
+                    }
+                    // Pine trees
+                    for (let p = 0; p < 35; p++) {
+                        let rx = MathUtils.randomRange(50, WORLD_WIDTH - 50);
+                        let ry = MathUtils.randomRange(50, WORLD_HEIGHT - 50);
+                        State.obstacles.push({ x: rx, y: ry, radius: MathUtils.randomRange(15, 30), type: 'pine' });
+                    }
+                }
+            }
+        };
+
+
+        // Event Handling
+        window.addEventListener('keydown', e => {
+            State.keys[e.code] = true;
+
+            // Prevent scroll behaviors of browser arrow/space keys
+            if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+                e.preventDefault();
+            }
+
+            // Keyboard-based stat upgrade shortcuts using Screws!
+            if (State.gameRunning && State.player) {
+                if (e.code === 'Digit1') {
+                    // Upgrade Fire Rate
+                    if (State.player.screwCount >= 3) {
+                        State.player.screwCount -= 3;
+                        State.player.upgrades.fireRate++;
+                        AudioSynth.playUpgrade();
+                        State.addLog(`[업그레이드 완료] 무기 연사 지연 감소! (Lv.${State.player.upgrades.fireRate})`, 'text-blue-400 font-bold');
+                    } else {
+                        State.addLog("나사가 부족합니다! (연사력 업그레이드 비용: 나사 3개)", "text-red-400");
+                        AudioSynth.play('sine', 150, 0.15, 0.1);
+                    }
+                }
+                if (e.code === 'Digit2') {
+                    // Upgrade Damage
+                    if (State.player.screwCount >= 3) {
+                        State.player.screwCount -= 3;
+                        State.player.upgrades.damage++;
+                        AudioSynth.playUpgrade();
+                        State.addLog(`[업그레이드 완료] 파괴 공격력 증가! (Lv.${State.player.upgrades.damage})`, 'text-blue-400 font-bold');
+                    } else {
+                        State.addLog("나사가 부족합니다! (공격력 업그레이드 비용: 나사 3개)", "text-red-400");
+                        AudioSynth.play('sine', 150, 0.15, 0.1);
+                    }
+                }
+                if (e.code === 'Digit3') {
+                    // Upgrade Bullet Speed
+                    if (State.player.screwCount >= 2) {
+                        State.player.screwCount -= 2;
+                        State.player.upgrades.speed++;
+                        AudioSynth.playUpgrade();
+                        State.addLog(`[업그레이드 완료] 투사체 비행 속도 증가! (Lv.${State.player.upgrades.speed})`, 'text-blue-400 font-bold');
+                    } else {
+                        State.addLog("나사가 부족합니다! (탄속 업그레이드 비용: 나사 2개)", "text-red-400");
+                        AudioSynth.play('sine', 150, 0.15, 0.1);
+                    }
+                }
+                if (e.code === 'KeyR') {
+                    State.player.reload();
+                }
+            }
+        });
+
+        window.addEventListener('keyup', e => {
+            State.keys[e.code] = false;
+        });
+
+        // Track Mouse
+        const canvas = document.getElementById('gameCanvas');
+        canvas.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            // Scale mouse coordinate strictly to canvas logical dimensions
+            State.mouse.screenX = (e.clientX - rect.left) * (CANVAS_WIDTH / rect.width);
+            State.mouse.screenY = (e.clientY - rect.top) * (CANVAS_HEIGHT / rect.height);
+        });
+
+        canvas.addEventListener('mousedown', e => {
+            if (e.button === 0) { // Left-click
+                State.mouse.down = true;
+            }
+        });
+
+        window.addEventListener('mouseup', e => {
+            if (e.button === 0) {
+                State.mouse.down = false;
+            }
+        });
+
+
+        // UI Updates
+        function updateUI() {
+            if (!State.player) return;
+
+            // HP Bar
+            const hpPct = Math.max(0, State.player.hp / State.player.maxHp) * 100;
+            document.getElementById('hp-bar').style.width = `${hpPct}%`;
+            document.getElementById('hp-text').innerText = `${Math.ceil(State.player.hp)}/${State.player.maxHp}`;
+            
+            // Noise meter
+            const noisePct = Math.min(100, (State.player.noiseRadius / 500) * 100);
+            document.getElementById('noise-bar').style.width = `${noisePct}%`;
+            document.getElementById('noise-text').innerText = `${Math.round(State.player.noiseRadius)}dB`;
+
+            // Stealth State Indicator
+            const stealthInd = document.getElementById('stealth-indicator');
+            if (State.player.isHidden) {
+                stealthInd.innerText = "은신 완료 (숨겨짐)";
+                stealthInd.className = "text-xs font-bold text-center py-0.5 rounded bg-green-950 text-green-400 border border-green-800 animate-pulse";
+            } else {
+                stealthInd.innerText = "노출 상태 (추적 가능)";
+                stealthInd.className = "text-xs font-bold text-center py-0.5 rounded bg-gray-900 text-gray-400";
+            }
+
+            // Upgrades & Screw
+            document.getElementById('screw-count').innerText = State.player.screwCount;
+            document.getElementById('stat-dmg').innerText = State.player.upgrades.damage;
+            document.getElementById('stat-rate').innerText = State.player.upgrades.fireRate;
+            document.getElementById('stat-spd').innerText = State.player.upgrades.speed;
+
+            // Weapon data
+            document.getElementById('weapon-name').innerText = State.player.weapon.name;
+            if (State.player.reloading) {
+                document.getElementById('ammo-count').innerText = `재장전 중... (${Math.ceil(State.player.reloadTimer/1000)}s)`;
+                document.getElementById('ammo-count').className = "text-xs text-yellow-400 font-semibold animate-pulse";
+            } else {
+                document.getElementById('ammo-count').innerText = `탄약: ${State.player.ammo} / ${State.player.weapon.type === 'pistol' ? '∞' : State.player.weapon.maxAmmo}`;
+                document.getElementById('ammo-count').className = "text-xs text-white";
+            }
+        }
+
+        // Draw HUD details (Draw onto Canvas directly)
+        function drawCanvasHUD(ctx) {
+            // Screen Flashlight shadow overlay for CAVE theme
+            if (selectedThemeId === 'cave') {
+                ctx.save();
+                
+                // Draw total darkness outside player's circular torch cone
+                ctx.beginPath();
+                ctx.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+                
+                // Define circular flashlight path
+                ctx.arc(State.player.x, State.player.y, 220, 0, Math.PI*2, true);
+                ctx.fillStyle = 'rgba(0,0,0,0.92)'; // near complete darkness outside flash
+                ctx.fill();
+                
+                ctx.restore();
+            }
+        }
+
+
+        // Start selected theme setup
+        function selectTheme(themeId) {
+            selectedThemeId = themeId;
+            document.querySelectorAll('.theme-btn').forEach(btn => {
+                btn.className = "theme-btn py-2 px-3 rounded text-xs border border-gray-700 bg-gray-900 hover:bg-gray-800 transition text-gray-300";
+            });
+            document.getElementById(`btn-theme-${themeId}`).className = "theme-btn py-2 px-3 rounded text-xs border border-yellow-500 bg-gray-950 text-yellow-400 font-bold shadow-md";
+        }
+
+        // Boot and initialize game loop
+        function startGame() {
+            AudioSynth.init();
+            
+            // Generate clean log board
+            document.getElementById('log-panel').innerHTML = '';
+            State.addLog("아포칼립스가 발발했습니다! 침착하게 생존로직을 설계해 기동하세요.", "text-red-500 font-bold animate-pulse");
+
+            // Setup maps
+            MapBuilder.generate(selectedThemeId);
+
+            // Spawn player at center of world
+            State.player = new Player(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
+
+            // Spawn standard humans (Civilians)
+            State.entities = [];
+            const numHumans = 15;
+            for (let i = 0; i < numHumans; i++) {
+                let rx = MathUtils.randomRange(100, WORLD_WIDTH - 100);
+                let ry = MathUtils.randomRange(100, WORLD_HEIGHT - 100);
+                // Keep away from player spawning zone
+                if (MathUtils.dist(rx, ry, State.player.x, State.player.y) < 300) {
+                    i--;
+                    continue;
+                }
+                State.entities.push(new Human(rx, ry));
+            }
+
+            // Spawn starting alpha zombies (2 counts)
+            for (let i = 0; i < 2; i++) {
+                let rx = MathUtils.randomRange(100, WORLD_WIDTH - 100);
+                let ry = MathUtils.randomRange(100, WORLD_HEIGHT - 100);
+                if (MathUtils.dist(rx, ry, State.player.x, State.player.y) < 450) {
+                    i--;
+                    continue;
+                }
+                State.entities.push(new Zombie(rx, ry, 'regular'));
+            }
+
+            // Clear arrays
+            State.bullets = [];
+            State.particles = [];
+            State.kills = 0;
+
+            // UI toggle
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('end-screen').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+
+            State.gameRunning = true;
+            
+            // Sound cue
+            AudioSynth.play('sine', 400, 0.4, 0.2);
+            setTimeout(() => AudioSynth.play('sawtooth', 150, 0.8, 0.25), 250);
+
+            // Loop trigger
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Main Execution Engine Frame Loop
+        function gameLoop() {
+            if (!State.gameRunning) return;
+
+            update();
+            render();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Physics, collision processing, triggers logic state
+        function update() {
+            // Update Player
+            State.player.update();
+
+            // Decay camera screen shake
+            if (State.camera.shake > 0) {
+                State.camera.shake *= 0.9;
+                if (State.camera.shake < 0.2) State.camera.shake = 0;
+            }
+
+            // Smooth Camera Follow Player
+            State.camera.targetX = State.player.x - CANVAS_WIDTH / 2;
+            State.camera.targetY = State.player.y - CANVAS_HEIGHT / 2;
+            State.camera.x += (State.camera.targetX - State.camera.x) * 0.1;
+            State.camera.y += (State.camera.targetY - State.camera.y) * 0.1;
+
+            // Restrict Camera to World bounds
+            State.camera.x = MathUtils.clamp(State.camera.x, 0, WORLD_WIDTH - CANVAS_WIDTH);
+            State.camera.y = MathUtils.clamp(State.camera.y, 0, WORLD_HEIGHT - CANVAS_HEIGHT);
+
+            // Handle Entities (Humans & Zombies)
+            for (let i = State.entities.length - 1; i >= 0; i--) {
+                const ent = State.entities[i];
+                ent.update();
+            }
+
+            // Dynamic safe item pickups (Screws, Weapon Chests)
+            for (let i = State.items.length - 1; i >= 0; i--) {
+                const item = State.items[i];
+                if (MathUtils.dist(State.player.x, State.player.y, item.x, item.y) < State.player.radius + item.radius) {
+                    if (item.type === 'screw') {
+                        State.player.screwCount++;
+                        AudioSynth.play('sine', 650, 0.1, 0.15);
+                        State.addLog("기계 개조 나사🔩 획득 완료!", "text-yellow-400");
+                    } else if (item.type === 'weapon') {
+                        // Equip new stronger weapon
+                        State.player.weapon = JSON.parse(JSON.stringify(item.weaponData));
+                        State.player.ammo = State.player.weapon.maxAmmo;
+                        State.player.reloading = false;
+                        AudioSynth.playUpgrade();
+                        State.addLog(`신규 장비 [${item.weaponData.name}] 획득 및 무장 완료!`, "text-green-400 font-bold");
+                    }
+                    State.items.splice(i, 1);
+                }
+            }
+
+            // Bullet vs Zombie collision processing
+            for (let b = State.bullets.length - 1; b >= 0; b--) {
+                const bullet = State.bullets[b];
+                bullet.update();
+
+                if (!bullet.active) {
+                    State.bullets.splice(b, 1);
+                    continue;
+                }
+
+                // Hit detection against zombies
+                for (let e = 0; e < State.entities.length; e++) {
+                    const zombie = State.entities[e];
+                    if (zombie instanceof Zombie) {
+                        const hitDist = MathUtils.dist(bullet.x, bullet.y, zombie.x, zombie.y);
+                        if (hitDist < bullet.size + zombie.radius) {
+                            
+                            // Deduct Zombie HP (Phase 5 core request!)
+                            zombie.hp -= bullet.damage;
+                            
+                            // Splatter debris
+                            AudioSynth.playHit();
+                            for (let p = 0; p < 6; p++) {
+                                State.particles.push(new Particle(bullet.x, bullet.y, '#991b1b', bullet.angle + MathUtils.randomRange(-0.5, 0.5), MathUtils.randomRange(2, 6)));
+                            }
+
+                            // Apply Knockback in projectile direction
+                            const kbForce = bullet.damage * 1.5;
+                            zombie.knockbackX = Math.cos(bullet.angle) * kbForce;
+                            zombie.knockbackY = Math.sin(bullet.angle) * kbForce;
+
+                            // Flame bullet continues piercing, other bullets dissolve
+                            if (!bullet.isFlame) {
+                                bullet.active = false;
+                            }
+
+                            // Check Zombie Death
+                            if (zombie.hp <= 0) {
+                                // Persistent blood decal
+                                State.bloodSplatters.push(new BloodSplatter(zombie.x, zombie.y));
+                                if (State.bloodSplatters.length > 150) {
+                                    State.bloodSplatters.shift(); // Keep performance fast!
+                                }
+
+                                // Death explosion explosion particles
+                                for (let p = 0; p < 12; p++) {
+                                    State.particles.push(new Particle(zombie.x, zombie.y, '#7f1d1d', Math.random() * Math.PI*2, MathUtils.randomRange(3, 7)));
+                                }
+
+                                AudioSynth.playSplat();
+                                State.kills++;
+                                State.addLog(`[${zombie.type.toUpperCase()}] 좀비를 물리쳤습니다! (+1 킬)`, 'text-green-500');
+
+                                // Remove zombie from entities
+                                State.entities.splice(e, 1);
+
+                                // Chance to drop extra Screws on zombie kill!
+                                if (Math.random() < 0.45) {
+                                    State.items.push(new LootItem(zombie.x, zombie.y, 'screw'));
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Update Particles
+            for (let p = State.particles.length - 1; p >= 0; p--) {
+                const part = State.particles[p];
+                part.update();
+                if (part.life <= 0) {
+                    State.particles.splice(p, 1);
+                }
+            }
+
+            // Update DOM UI elements
+            updateUI();
+
+            // End game check:
+            // 1. Player is dead
+            if (State.player.hp <= 0) {
+                endGame(false, "전사하셨습니다. 좀비 바이러스가 마을을 집어삼켰습니다.");
+            }
+            // 2. All humans turned, and no items left
+            let humansAlive = State.entities.filter(e => e instanceof Human).length;
+            let zombiesAlive = State.entities.filter(e => e instanceof Zombie).length;
+
+            if (humansAlive === 0 && zombiesAlive > 0 && Math.random() < 0.001) {
+                // If all humans are gone, spawning rate of elite zombies goes wild, forcing players to run!
+                State.addLog("모든 인류 생존자가 멸절했습니다! 좀비의 분노가 극에 달합니다!", "text-red-600 font-bold");
+            }
+
+            // Victory: Survive and wipe out threat, or reach high kills
+            if (zombiesAlive === 0 && humansAlive > 0) {
+                endGame(true, "마을의 모든 감염원을 소탕하고 사람들을 구조해 영웅이 되었습니다!");
+            }
+        }
+
+        // Render Canvas Visual Components
+        function render() {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            ctx.save();
+            
+            // Apply Camera Shake offset
+            let shakeX = MathUtils.randomRange(-State.camera.shake, State.camera.shake);
+            let shakeY = MathUtils.randomRange(-State.camera.shake, State.camera.shake);
+            ctx.translate(-State.camera.x + shakeX, -State.camera.y + shakeY);
+
+            // 1. Render Ground floor theme base
+            ctx.fillStyle = theme.bgColor;
+            ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
+            // Draw retro styled floor grid tile lines for depth perception
+            ctx.strokeStyle = theme.floorDetails[0];
+            ctx.lineWidth = 1;
+            const tileSize = 80;
+            for (let x = 0; x < WORLD_WIDTH; x += tileSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, WORLD_HEIGHT);
+                ctx.stroke();
+            }
+            for (let y = 0; y < WORLD_HEIGHT; y += tileSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(WORLD_WIDTH, y);
+                ctx.stroke();
+            }
+
+            // 2. Persistent Blood Splatters Decals (Satisfying Floor effect)
+            for (let splat of State.bloodSplatters) {
+                splat.draw(ctx);
+            }
+
+            // 3. Render Lakes & Slip Ice blocks (Theme specific properties)
+            for (let obs of State.obstacles) {
+                if (obs.type === 'lake') {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = theme.obstacleColor;
+                    ctx.lineWidth = 4;
+                    ctx.strokeStyle = '#004c8c';
+                    ctx.stroke();
+                    ctx.fill();
+                    // reflection water waves
+                    ctx.strokeStyle = '#3d85c6';
+                    ctx.beginPath();
+                    ctx.moveTo(obs.x - obs.radius/2, obs.y);
+                    ctx.lineTo(obs.x + obs.radius/2, obs.y);
+                    ctx.stroke();
+                    ctx.restore();
+                } else if (obs.type === 'ice') {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(161, 196, 253, 0.65)';
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = '#e6f2ff';
+                    ctx.stroke();
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            // 4. Render Hideout Zones (Suphul / Buildings / Caves)
+            for (let h of State.hideouts) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, h.radius, 0, Math.PI * 2);
+                ctx.fillStyle = theme.hidingColor;
+                ctx.fill();
+
+                // Draw decorative borders around hideouts
+                ctx.strokeStyle = selectedThemeId === 'jungle' ? '#1b4d3e' : '#475569';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([8, 8]);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // 5. Render Loot Items
+            for (let item of State.items) {
+                item.draw(ctx);
+            }
+
+            // 6. Render Obstacle Solid Colliders
+            for (let obs of State.obstacles) {
+                if (obs.type !== 'lake' && obs.type !== 'ice') {
+                    ctx.save();
+                    ctx.translate(obs.x, obs.y);
+
+                    // Drop Shadow
+                    ctx.beginPath();
+                    ctx.arc(-4, 4, obs.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+                    ctx.fill();
+
+                    ctx.beginPath();
+                    ctx.arc(0, 0, obs.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = theme.wallColor;
+                    ctx.strokeStyle = theme.obstacleColor;
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.fill();
+
+                    // Details on Rocks/Walls
+                    ctx.fillStyle = theme.obstacleColor;
+                    ctx.fillRect(-obs.radius/2, -obs.radius/3, obs.radius, obs.radius/1.5);
+
+                    ctx.restore();
+                }
+            }
+
+            // 7. Render Entities (Civilians + Zombies)
+            for (let ent of State.entities) {
+                ent.draw(ctx);
+            }
+
+            // 8. Render Player Character
+            State.player.draw(ctx);
+
+            // 9. Render Bullets/Flamethrower/Arrows
+            for (let bullet of State.bullets) {
+                bullet.draw(ctx);
+            }
+
+            // 10. Render Particles
+            for (let part of State.particles) {
+                part.draw(ctx);
+            }
+
+            // 11. Overlays (Flashlight shadow for Caves)
+            drawCanvasHUD(ctx);
+
+            ctx.restore();
+        }
+
+        // Handle End Game Conditions
+        function endGame(victory, message) {
+            State.gameRunning = false;
+            
+            document.getElementById('hud').classList.add('hidden');
+            const endScreen = document.getElementById('end-screen');
+            endScreen.classList.remove('hidden');
+
+            const endTitle = document.getElementById('end-title');
+            if (victory) {
+                endTitle.innerText = "VICTORY SURVIVED!";
+                endTitle.className = "pixel-text text-3xl text-green-500 animate-bounce";
+                AudioSynth.playUpgrade();
+            } else {
+                endTitle.innerText = "GAME OVER";
+                endTitle.className = "pixel-text text-3xl text-red-600";
+                AudioSynth.play('sawtooth', 80, 1.2, 0.3);
+            }
+
+            document.getElementById('end-subtitle').innerText = message;
+
+            // Update End game card statistics
+            document.getElementById('stat-zombie-kills').innerText = State.kills;
+            
+            let humansSaved = State.entities.filter(e => e instanceof Human && !e.isInfected).length;
+            document.getElementById('stat-saved-humans').innerText = humansSaved;
+            
+            document.getElementById('stat-total-screws').innerText = State.player ? State.player.screwCount : 0;
+            document.getElementById('stat-max-weapon').innerText = State.player ? State.player.weapon.name : "N/A";
+        }
+
+        function restartToMenu() {
+            document.getElementById('end-screen').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
+        }
+
+        // Trigger default selection visually on start
+        selectTheme('jungle');
+    </script>
+</body>
+</html>

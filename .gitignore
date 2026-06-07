@@ -1,0 +1,29 @@
+# Build artifacts
+build/
+*.tar.gz
+
+# Large asset files (backup + legacy)
+assets/font.ttf
+assets/fonts/*.bak
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Game saves
+save.dat
+save.json
+settings.json
+touch_layout.json
+
+# Environment
+.env
+*.log
