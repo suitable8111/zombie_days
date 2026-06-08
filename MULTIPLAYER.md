@@ -47,16 +47,42 @@ uvicorn server:app --host 0.0.0.0 --port 8000
 
 `network.py` 상단:
 ```python
-SERVER_URL = "http://localhost:8000"        # 로컬 테스트
-# SERVER_URL = "http://203.0.113.7:8000"    # ← 자체 서버 IP 로 교체
-MULTIPLAYER_ENABLED = True                   # False = 완전 싱글플레이
+SERVER_URL = "https://xxxx-xx.ngrok-free.app"   # ngrok (권장)
+# SERVER_URL = "http://172.30.1.80:8000"        # LAN 테스트
+# SERVER_URL = "http://localhost:8000"          # 로컬 단독
+MULTIPLAYER_ENABLED = True                       # False = 완전 싱글플레이
 ```
 
-- **로컬 테스트**: `localhost` 그대로
-- **실배포**: 보유한 서버의 공인 IP로 변경
-- ⚠ **itch.io(https) 주의**: https 페이지는 보안상 `http/ws` 서버에 접속할 수 없다.
-  itch.io 웹 배포로 멀티를 하려면 서버에 **TLS(https/wss)** 가 필요하다
-  (예: Caddy/Nginx 리버스 프록시 + Let's Encrypt → `https://도메인` 으로 SERVER_URL 설정).
+### ★ ngrok 사용 (권장 — itch.io 웹 배포까지 한 번에 해결)
+
+ngrok 은 로컬 서버를 **https/wss** 공개 주소로 터널링한다.
+itch.io(https) 페이지는 http 서버에 접속할 수 없는데, ngrok 의 https 주소를 쓰면
+이 문제가 자동으로 해결된다.
+
+```bash
+# 1. 서버 PC 에서 게임 서버 실행
+uvicorn server:app --host 0.0.0.0 --port 8000
+
+# 2. 다른 터미널에서 ngrok 으로 8000 포트 터널링
+ngrok http 8000
+```
+
+ngrok 이 출력하는 `Forwarding  https://xxxx-xx.ngrok-free.app -> http://localhost:8000`
+의 **https 주소**를 복사해 `network.py` 의 `SERVER_URL` 에 붙여넣는다.
+
+> ⚠ **무료(ngrok-free) 주소는 ngrok 재시작마다 바뀐다.** 재시작했으면 새 주소로 교체 필요.
+> 고정 도메인은 ngrok 유료 플랜 또는 예약 도메인(`ngrok http --domain=...`)으로 가능.
+>
+> ngrok-free 의 "브라우저 경고 페이지"는 클라이언트가 자동으로
+> `ngrok-skip-browser-warning` 헤더를 보내 우회한다 (코드에 반영됨).
+
+### LAN(같은 공유기) 테스트
+
+ngrok 없이 같은 네트워크에서 테스트하려면 서버 PC 의 LAN IP 사용:
+```python
+SERVER_URL = "http://<서버PC_IP>:8000"   # 예: http://172.30.1.80:8000
+```
+서버는 반드시 `--host 0.0.0.0` 으로 실행, 방화벽 8000 포트 개방.
 
 ---
 

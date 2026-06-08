@@ -10,8 +10,12 @@ Zombie Days — 멀티플레이 중계 서버 (Phase 12)
 
   ※ uvicorn 의 진입점 `app` 은 아래에서 socketio.ASGIApp 으로 노출한다.
 """
+import time
 import socketio
 from fastapi import FastAPI
+
+# 서버 가동 시각 — 모든 클라이언트의 게임 시간 기준점 (단조 시계)
+SERVER_EPOCH = time.monotonic()
 
 # ── Socket.IO 서버 (CORS 완전 개방: itch.io + localhost 모두 허용) ────────────
 sio = socketio.AsyncServer(
@@ -54,6 +58,8 @@ async def connect(sid, environ, auth=None):
     others = [st for other_sid, st in players.items()
               if other_sid != sid and len(st) > 1]   # 좌표가 한 번이라도 들어온 유저만
     await sio.emit("init_players", others, to=sid)
+    # 서버 가동 경과 시간(초) → 클라가 동일 시간대(낮/밤) 계산에 사용
+    await sio.emit("sync_time", {"elapsed": time.monotonic() - SERVER_EPOCH}, to=sid)
     print(f"[+] connect: {sid}  (online={len(players)})")
 
 
@@ -70,6 +76,26 @@ async def update_position(sid, data):
     players[sid] = data              # 최신 상태 저장
     # 나를 제외한 전원에게 전달
     await sio.emit("update_player", data, skip_sid=sid)
+
+
+@sio.event
+async def hit_player(sid, data):
+    """
+    PvP 피격. 공격자(sid)가 특정 대상에게 피해를 입혔다고 보고하면,
+    서버가 피해 대상에게만 'take_damage' 를 전달한다.
+    data: {"target": <피해자 sid>, "dmg": <피해량>, "kx","ky": 넉백 방향}
+    """
+    if not isinstance(data, dict):
+        return
+    target = data.get("target")
+    if target and target in players:
+        payload = {
+            "from": sid,
+            "dmg":  int(data.get("dmg", 0)),
+            "kx":   float(data.get("kx", 0.0)),
+            "ky":   float(data.get("ky", 0.0)),
+        }
+        await sio.emit("take_damage", payload, to=target)
 
 
 @sio.event

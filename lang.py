@@ -203,6 +203,11 @@ _STRINGS = {
         # Main menu buttons
         "menu_new_game":    "새 게임",
         "menu_continue":    "이어하기",
+        "menu_singleplayer": "싱글플레이",
+        "menu_multiplayer":  "멀티플레이",
+        "mp_connecting":     "서버 접속 중...",
+        "mp_connected":      "멀티플레이 접속됨",
+        "mp_failed":         "서버 접속 실패 — 싱글로 진행",
         "menu_options":     "옵션",
         "menu_no_save":     "저장 파일 없음",
         "menu_hint_bar":    "WASD 이동  |  마우스 조준  |  클릭 사격  |  Shift 질주",
@@ -437,6 +442,11 @@ _STRINGS = {
         # Main menu buttons
         "menu_new_game":    "New Game",
         "menu_continue":    "Continue",
+        "menu_singleplayer": "Single Player",
+        "menu_multiplayer":  "Multiplayer",
+        "mp_connecting":     "Connecting...",
+        "mp_connected":      "Multiplayer connected",
+        "mp_failed":         "Connection failed - single mode",
         "menu_options":     "Options",
         "menu_no_save":     "No save file",
         "menu_hint_bar":    "WASD Move  |  Mouse Aim  |  Click Fire  |  Shift Sprint",

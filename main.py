@@ -1110,6 +1110,7 @@ async def main():
     _dawn_interval = (DAY_START - GAME_START_HOUR + 24) % 24  # = 22h for 8AM start
     _total_game_h  = 0.0          # cumulative in-game hours elapsed
     _next_dawn_h   = _dawn_interval  # game-hours until first dawn
+    _mp_synced     = False        # 서버 시간 최초 동기화 완료 여부 (멀티)
     day_banner     = {"day": 1, "sub": "", "timer": 3.2, "max": 3.2}
     notifications  = []           # [{"text","color","timer"}, ...]
     kills          = 0
@@ -1154,10 +1155,7 @@ async def main():
     touch = TouchOverlay(WIDTH, HEIGHT)
     touch.visible = _menu_mod.get_setting("joystick", False)
 
-    # ── 멀티플레이 접속 (백그라운드, 논블로킹) ──────────────────────────────
-    # 실패해도 게임은 싱글플레이로 계속 진행된다.
-    if _net.MULTIPLAYER_ENABLED:
-        asyncio.ensure_future(_net.connect_to_server())
+    # 멀티플레이 접속은 메인 메뉴의 "멀티플레이" 버튼에서 트리거된다.
 
     running = True
     while running:
@@ -1382,8 +1380,13 @@ async def main():
                     mx, my = pygame.mouse.get_pos()
                     for action, rect in _menu_buttons:
                         if rect.collidepoint(mx, my):
-                            if action == "new_game":
-                                _menu_mod.delete_save()
+                            if action in ("singleplayer", "multiplayer"):
+                                _is_mp = (action == "multiplayer")
+                                if _is_mp:
+                                    # 서버 접속 (백그라운드). 실패해도 게임은 진행.
+                                    asyncio.ensure_future(_net.connect_to_server())
+                                else:
+                                    _net.go_offline()   # 싱글: 네트워크 차단
                                 (player, npcs, zombies, zones, vehicles,
                                  item_manager, proj_manager, ptcl_manager,
                                  camera, chunk_manager, spatial, minimap) = _new_game()
@@ -1393,23 +1396,11 @@ async def main():
                                 show_minimap = False; _current_town = None
                                 survival_day = 1; _total_game_h = 0.0
                                 _next_dawn_h = _dawn_interval
+                                _mp_synced = False
                                 day_banner = {"day": 1, "sub": "", "timer": 3.2, "max": 3.2}
                                 notifications = []
                                 difficulty.current_day = 1
                                 game_state = STATE_PLAY
-                            elif action == "continue":
-                                save = _menu_mod.load_game()
-                                if save:
-                                    (kills, civilian_kills,
-                                     survival_day, game_time) = _load_into_game(
-                                        save, player, kills, civilian_kills,
-                                        survival_day, game_time)
-                                    difficulty.current_day = survival_day
-                                    _next_dawn_h = _dawn_interval
-                                    _total_game_h = 0.0
-                                    camera.x = player.pos.x - WIDTH / 2
-                                    camera.y = player.pos.y - HEIGHT / 2
-                                    game_state = STATE_PLAY
                             elif action == "options":
                                 _prev_state = STATE_MENU
                                 game_state  = STATE_OPTIONS
@@ -1777,6 +1768,28 @@ async def main():
                         player.screws = max(0, player.screws - 5)
                     Sheriff.alert_nearby(npcs, _npc.pos)
 
+            # ── PvP 근접: 원격 플레이어 적중 (멀티) ──────────────────────
+            if w.is_swinging and remote_players:
+                import math as _m
+                _ad     = player.aim_dir.normalize() if player.aim_dir.length_squared() > 0.01 else pygame.Vector2(0, -1)
+                _half_a = _m.radians(w.arc_deg / 2)
+                for _pid, _rp in remote_players.items():
+                    _hid = ("mp", _pid)
+                    if not _rp.alive or _hid in w._hit_ids:
+                        continue
+                    _d = player.pos.distance_to(_rp.render_pos)
+                    if _d > w.reach + _rp.radius:
+                        continue
+                    _to = _rp.render_pos - player.pos
+                    if _to.length_squared() > 0.01:
+                        _cos = _ad.dot(_to.normalize())
+                        if _m.acos(max(-1.0, min(1.0, _cos))) > _half_a:
+                            continue
+                    w._hit_ids.add(_hid)
+                    _net.send_hit(_pid, int(w.hit_damage), kd)
+                    ptcl_manager.muzzle_flash(_rp.render_pos, -kd)
+                    camera.add_shake(shake)
+
         elif w:
             # ── Ranged attack ─────────────────────────────────────────────
             held_mouse = pygame.mouse.get_pressed()[0] or touch.fire_held
@@ -1992,7 +2005,22 @@ async def main():
                 ptcl_manager.screw_pop(z.pos)
 
         # ── Update: projectiles ─────────────────────────────────────────────
-        hits, explosions = proj_manager.update(dt, bounds, zones, zombies, npcs, player)
+        _pvp_hits = []
+        hits, explosions = proj_manager.update(dt, bounds, zones, zombies, npcs,
+                                               player, remote_players, _pvp_hits)
+        # PvP: 내 총알이 원격 플레이어 적중 → 서버로 피해 보고
+        for _tgt, _dmg, _knock in _pvp_hits:
+            _net.send_hit(_tgt, _dmg, _knock)
+
+        # PvP: 다른 플레이어에게 받은 피해 적용
+        for _hit in _net.consume_damage():
+            player.take_damage(int(_hit.get("dmg", 0)))
+            camera.add_shake(4.0)
+            _kx, _ky = _hit.get("kx", 0.0), _hit.get("ky", 0.0)
+            if _kx or _ky:
+                player.pos.x += _kx * 14
+                player.pos.y += _ky * 14
+            ptcl_manager.blood_hit(player.pos, pygame.Vector2(_kx, _ky) * 100)
 
         for hit in hits:
             ptcl_manager.blood_hit(hit.pos, hit.vel)
@@ -2083,13 +2111,24 @@ async def main():
         if not player.alive:
             game_state = STATE_OVER
 
-        # ── Day / Night + Lantern ───────────────────────────────────────────
-        _gh = GAME_HOURS_PER_SEC * dt * day_speed
-        game_time = (game_time + _gh) % 24
-        day_t     = _day_factor(game_time)
-
-        # ── Survival day counter ────────────────────────────────────────────
-        _total_game_h += _gh
+        # ── Day / Night — 멀티 시 서버 권위 시간, 싱글 시 로컬 진행 ─────────
+        _srv_secs = _net.server_elapsed_seconds()
+        if _srv_secs is not None:
+            # 모든 플레이어가 서버 가동시간 기준 동일 시간대
+            _total_game_h = _srv_secs * GAME_HOURS_PER_SEC
+            game_time     = (GAME_START_HOUR + _total_game_h) % 24
+            if not _mp_synced:
+                # 첫 동기화 — 현재 날짜를 효과 없이 맞춤 (배너/보너스 스팸 방지)
+                _mp_synced = True
+                _dp = (0 if _total_game_h < _dawn_interval
+                       else 1 + int((_total_game_h - _dawn_interval) // 24))
+                survival_day = 1 + _dp
+                _next_dawn_h = _dawn_interval + 24.0 * _dp
+        else:
+            _gh = GAME_HOURS_PER_SEC * dt * day_speed
+            game_time = (game_time + _gh) % 24
+            _total_game_h += _gh
+        day_t = _day_factor(game_time)
         difficulty.current_day = survival_day
 
         # ── Town entry detection ────────────────────────────────────────────
@@ -2103,7 +2142,7 @@ async def main():
                     "timer": 4.0,
                 })
 
-        if _total_game_h >= _next_dawn_h:
+        while _total_game_h >= _next_dawn_h:
             _next_dawn_h += 24.0
             completed = survival_day
             survival_day += 1

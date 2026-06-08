@@ -132,8 +132,12 @@ class ProjectileManager:
             else:
                 self.bullets.append(p)
 
-    def update(self, dt, bounds, zones, zombies, npcs=None, player=None):
-        """Returns (list[HitEvent], list[Grenade exploded])."""
+    def update(self, dt, bounds, zones, zombies, npcs=None, player=None,
+               remote_players=None, pvp_out=None):
+        """Returns (list[HitEvent], list[Grenade exploded]).
+        remote_players: {pid: NetworkPlayer} — 멀티 PvP 대상.
+        pvp_out: 리스트면 (target_id, dmg, knock) 튜플이 append 된다.
+        """
         hits: list[HitEvent] = []
 
         for b in self.bullets:
@@ -147,6 +151,20 @@ class ProjectileManager:
                 if zone.blocks_movement and zone.contains(b.pos):
                     b.alive = False
                     break
+            if not b.alive:
+                continue
+            # ── PvP: 내 총알이 원격 플레이어 적중 (멀티) ──────────────────
+            if b.owner == "player" and remote_players:
+                for pid, rp in remote_players.items():
+                    if rp.alive and b.pos.distance_to(rp.render_pos) < b.radius + rp.radius:
+                        knock = (b.vel.normalize() if b.vel.length_squared() > 0
+                                 else pygame.Vector2(1, 0))
+                        if pvp_out is not None:
+                            pvp_out.append((pid, b.damage, knock))
+                        hits.append(HitEvent(pygame.Vector2(rp.render_pos),
+                                             b.vel, False, "player"))
+                        b.alive = False
+                        break
             if not b.alive:
                 continue
             # Zombie collision (all bullets hit zombies)

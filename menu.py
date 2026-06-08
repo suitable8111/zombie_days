@@ -255,19 +255,17 @@ def draw_title(surface, mouse_pos: tuple, W: int, H: int, version: str = "") -> 
     btn_x  = cx - bw // 2
     btn_y0 = 290
 
-    has_save = load_game() is not None
-
     labels = [
-        ("new_game",  lang.t("menu_new_game")),
-        ("continue",  lang.t("menu_continue")),
-        ("options",   lang.t("menu_options")),
+        ("singleplayer", lang.t("menu_singleplayer")),
+        ("multiplayer",  lang.t("menu_multiplayer")),
+        ("options",      lang.t("menu_options")),
     ]
     mx, my = mouse_pos
     buttons = []
     for i, (action, label) in enumerate(labels):
         r = pygame.Rect(btn_x, btn_y0 + i * (bh + gap), bw, bh)
-        disabled = (action == "continue" and not has_save)
-        hovered  = r.collidepoint(mx, my) and not disabled
+        disabled = False
+        hovered  = r.collidepoint(mx, my)
         _draw_btn(surface, r, label, hovered, disabled)
         buttons.append((action, r, disabled))
 

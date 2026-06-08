@@ -28,15 +28,21 @@ from entities import _draw_human_anim
 # ═══════════════════════════════════════════════════════════════════════════════
 # 서버 주소 설정
 # ───────────────────────────────────────────────────────────────────────────────
-#   로컬 테스트 : "http://localhost:8000"
-#   자체 서버   : "http://<보유한_서버_IP>:8000"  (예: "http://203.0.113.7:8000")
-#   ⚠ Socket.IO 는 http(s) 스킴을 쓰며 내부적으로 ws 로 업그레이드한다.
-#     itch.io(https) 에서 접속하려면 서버도 https(wss) 여야 한다 → 배포 시 TLS 필요.
+#   ★ ngrok (권장) : "https://xxxx-xx.ngrok-free.app"
+#       - https/wss 라서 itch.io(https) 에서도 그대로 접속 가능 (TLS 자동)
+#       - ⚠ 무료(ngrok-free) 주소는 ngrok 재시작마다 바뀐다 → 아래 줄만 교체!
+#       - 서버 PC 에서:  ngrok http 8000   → 출력된 https 주소를 복붙
+#   로컬 LAN 테스트 : "http://172.30.1.80:8000"
+#   로컬 단독       : "http://localhost:8000"
 # ═══════════════════════════════════════════════════════════════════════════════
-SERVER_URL = "http://localhost:8000"
-# SERVER_URL = "http://203.0.113.7:8000"   # ← 자체 서버 IP 로 교체
+SERVER_URL = "https://CHANGE-ME.ngrok-free.app"   # ← ngrok 실행 후 나온 주소로 교체
+# SERVER_URL = "http://172.30.1.80:8000"          # LAN 테스트용
+# SERVER_URL = "http://localhost:8000"            # 로컬 단독
 
 MULTIPLAYER_ENABLED = True   # False 면 완전 싱글플레이 (네트워크 비활성)
+
+# ngrok-free 경고 페이지 우회 헤더 (HTTP 요청에 부착)
+_NGROK_HEADERS = {"ngrok-skip-browser-warning": "true"}
 
 _IS_WEB = sys.platform == "emscripten"
 
@@ -51,6 +57,28 @@ local_player_id: str | None = None
 
 # 내 닉네임 — 화면에 표시 + 서버로 전송. main 에서 설정.
 local_player_name: str = f"Player{random.randint(1000, 9999)}"
+
+# ── 서버 권위 시간 ─────────────────────────────────────────────────────────────
+# 서버가 알려준 "가동 경과 초" + 로컬 단조시계로 외삽 → 모든 클라 동일 시간대
+_srv_elapsed_base: float | None = None   # 서버가 준 경과초 (sync 시점)
+_srv_local_base:   float        = 0.0    # sync 받은 순간의 로컬 monotonic
+
+# ── 내가 받은 PvP 피해 큐 (메인 루프가 소비) ───────────────────────────────────
+incoming_damage: list[dict] = []   # [{"from","dmg","kx","ky"}, ...]
+
+
+def set_server_time(elapsed: float) -> None:
+    """서버 sync_time 수신 시 호출. 이후 server_elapsed_seconds() 가 외삽한다."""
+    global _srv_elapsed_base, _srv_local_base
+    _srv_elapsed_base = float(elapsed)
+    _srv_local_base   = time.monotonic()
+
+
+def server_elapsed_seconds() -> float | None:
+    """서버 가동 경과 시간(초). 오프라인/미동기화면 None."""
+    if _srv_elapsed_base is None or not transport.connected:
+        return None
+    return _srv_elapsed_base + (time.monotonic() - _srv_local_base)
 
 # 송신 빈도 제어 (20Hz = 0.05s)
 SYNC_HZ       = 20.0
@@ -213,6 +241,10 @@ class NetworkTransport:
         """내 상태 패킷을 서버로 전송."""
         raise NotImplementedError
 
+    async def send_event(self, event: str, payload: dict) -> None:
+        """임의 이벤트 전송 (PvP 피격 등). 기본은 no-op."""
+        return
+
     async def poll(self) -> list[dict]:
         """서버에서 도착한 다른 유저들의 스냅샷 목록을 가져온다."""
         raise NotImplementedError
@@ -271,9 +303,18 @@ class SocketIOTransport(NetworkTransport):
         async def _on_leave(data):
             self._inbox.append({"_leave": data.get("id")})
 
+        @self._sio.on("sync_time")
+        async def _on_synctime(data):
+            self._inbox.append({"_synctime": data.get("elapsed", 0.0)})
+
+        @self._sio.on("take_damage")
+        async def _on_dmg(data):
+            self._inbox.append({"_damage": data})
+
     async def connect(self, url: str) -> bool:
         try:
-            await self._sio.connect(url, transports=["websocket"])
+            await self._sio.connect(url, transports=["websocket"],
+                                    headers=_NGROK_HEADERS)
             global local_player_id
             local_player_id = self._sio.get_sid()
             self.connected = True
@@ -287,6 +328,13 @@ class SocketIOTransport(NetworkTransport):
         if self.connected:
             try:
                 await self._sio.emit("update_position", packet)
+            except Exception:
+                self.connected = False
+
+    async def send_event(self, event: str, payload: dict) -> None:
+        if self.connected:
+            try:
+                await self._sio.emit(event, payload)
             except Exception:
                 self.connected = False
 
@@ -350,6 +398,11 @@ class WebBridgeTransport(NetworkTransport):
             import json
             self._window.zdSend(json.dumps(packet))
 
+    async def send_event(self, event: str, payload: dict) -> None:
+        if self.connected and self._window is not None:
+            import json
+            self._window.zdEmit(event, json.dumps(payload))
+
     async def poll(self) -> list[dict]:
         if self._window is None:
             return []
@@ -385,8 +438,19 @@ async def connect_to_server(url: str | None = None) -> bool:
     if not MULTIPLAYER_ENABLED:
         return False
     target = url or SERVER_URL
-    new_tr: NetworkTransport = (WebBridgeTransport() if _IS_WEB
-                                else SocketIOTransport())
+
+    # transport 생성 — 라이브러리 미설치 시 조용히 오프라인 폴백
+    try:
+        new_tr: NetworkTransport = (WebBridgeTransport() if _IS_WEB
+                                    else SocketIOTransport())
+    except ModuleNotFoundError:
+        print("[network] python-socketio 미설치 → 싱글플레이로 진행.\n"
+              "          데스크톱 멀티 테스트: pip install python-socketio aiohttp")
+        return False
+    except Exception as e:
+        print(f"[network] transport 생성 실패 → 싱글플레이: {e}")
+        return False
+
     ok = await new_tr.connect(target)
     if ok:
         transport = new_tr
@@ -452,6 +516,14 @@ async def sync_network_data(player, survival_day: int, dt: float,
     # 3) 수신 — 도착한 스냅샷/이벤트 처리
     incoming = await transport.poll()
     for snap in incoming:
+        # 서버 시간 동기화
+        if "_synctime" in snap:
+            set_server_time(snap["_synctime"])
+            continue
+        # PvP 피해 수신 → 메인 루프가 소비할 큐에 적재
+        if "_damage" in snap:
+            incoming_damage.append(snap["_damage"])
+            continue
         # 퇴장 이벤트
         leave_id = snap.get("_leave")
         if leave_id is not None:
@@ -473,11 +545,53 @@ async def sync_network_data(player, survival_day: int, dt: float,
         del remote_players[pid]
 
 
+def send_hit(target_id: str, dmg: int, knock: pygame.Vector2) -> None:
+    """원격 플레이어에게 PvP 피해를 입혔음을 서버에 보고 (fire-and-forget)."""
+    if not transport.connected or target_id == local_player_id:
+        return
+    import asyncio
+    payload = {"target": target_id, "dmg": int(dmg),
+               "kx": round(knock.x, 3), "ky": round(knock.y, 3)}
+    try:
+        asyncio.ensure_future(transport.send_event("hit_player", payload))
+    except Exception:
+        pass
+
+
+def consume_damage() -> list[dict]:
+    """메인 루프가 호출 — 내가 받은 PvP 피해 목록을 꺼내 비운다."""
+    global incoming_damage
+    out = incoming_damage
+    incoming_damage = []
+    return out
+
+
 def reset_network() -> None:
     """새 게임 시작 / 메인 메뉴 복귀 시 원격 상태 초기화."""
     remote_players.clear()
-    global _sync_accum
+    incoming_damage.clear()
+    global _sync_accum, _srv_elapsed_base
     _sync_accum = 0.0
+    _srv_elapsed_base = None
+
+
+def go_offline() -> None:
+    """싱글플레이 모드 — 기존 접속을 끊고 더미 transport 로 되돌린다."""
+    global transport, local_player_id, _srv_elapsed_base
+    old = transport
+    transport = DummyTransport()
+    remote_players.clear()
+    incoming_damage.clear()
+    local_player_id = None
+    _srv_elapsed_base = None
+    # 기존 소켓 정리 (있으면)
+    sio = getattr(old, "_sio", None)
+    if sio is not None:
+        try:
+            import asyncio
+            asyncio.ensure_future(sio.disconnect())
+        except Exception:
+            pass
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
