@@ -31,6 +31,8 @@ from minimap import Minimap
 from map import draw_zone_labels, HideoutCompound
 from melee import MeleeWeapon, MeleeDrop
 import menu as _menu_mod
+import network as _net
+from network import remote_players, sync_network_data
 
 # ── Window / game constants ───────────────────────────────────────────────────
 WIDTH, HEIGHT = 1024, 768
@@ -905,6 +907,7 @@ _DBG_WPN_FLAGS = {
 def _new_game():
     from entities import PLAYER_SPEED
     from items import WeaponDrop
+    _net.reset_network()   # 멀티플레이 원격 상태 초기화
     chunk_manager = ChunkManager()
     px, py        = chunk_manager.find_safe_start()
     player        = Player(px, py)
@@ -1150,6 +1153,11 @@ async def main():
     _menu_mod.load_settings()
     touch = TouchOverlay(WIDTH, HEIGHT)
     touch.visible = _menu_mod.get_setting("joystick", False)
+
+    # ── 멀티플레이 접속 (백그라운드, 논블로킹) ──────────────────────────────
+    # 실패해도 게임은 싱글플레이로 계속 진행된다.
+    if _net.MULTIPLAYER_ENABLED:
+        asyncio.ensure_future(_net.connect_to_server())
 
     running = True
     while running:
@@ -1657,6 +1665,10 @@ async def main():
         for slot_list in player.weapon_slots:
             for w in slot_list:
                 w.tick(dt)
+
+        # ── Multiplayer sync (20Hz 송신 + 매 프레임 원격 보간) ──────────────
+        # 오프라인(DummyTransport)이면 원격 보간만 돌고 즉시 반환 → 비용 0.
+        await sync_network_data(player, survival_day, dt, current_vehicle)
 
         # ── Exploration tracking ────────────────────────────────────────────
         # Vehicles are loud — reveal more around them
@@ -2229,6 +2241,13 @@ async def main():
             if _vis(zombie.pos, margin=zombie.radius + 10):
                 zombie.draw(_world_surf, _vox, _voy, debug=debug,
                             font=font_dbg if debug else None)
+
+        # ── 원격 플레이어 (멀티) — 청크 스트리밍과 동일한 뷰포트 컬링 적용 ──
+        if remote_players:
+            _name_font = fonts.get(12)
+            for _rp in remote_players.values():
+                if _vis(_rp.render_pos, margin=_rp.radius + 10):
+                    _rp.draw(_world_surf, _vox, _voy, font=_name_font)
 
         player.draw(_world_surf, _vox, _voy, debug=debug)
 

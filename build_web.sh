@@ -28,6 +28,10 @@ echo "→ 빌드 시작..."
 cd "$GAME_DIR"
 "$VENV_DIR/bin/python" -m pygbag --build main.py
 
+# Socket.IO 멀티플레이 브릿지 주입
+echo "→ Socket.IO 브릿지 주입..."
+"$VENV_DIR/bin/python" inject_socketio.py
+
 # zip 생성
 echo "→ zip 패키징..."
 rm -f zombiedays-itch.zip

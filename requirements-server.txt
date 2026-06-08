@@ -1,0 +1,4 @@
+# Zombie Days 멀티플레이 서버 의존성
+fastapi>=0.110
+python-socketio>=5.11
+uvicorn[standard]>=0.29

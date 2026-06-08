@@ -27,3 +27,7 @@ touch_layout.json
 # Environment
 .env
 *.log
+
+# Virtual environments
+.venv*/
+venv/
