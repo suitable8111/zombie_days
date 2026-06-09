@@ -1111,6 +1111,9 @@ async def main():
     _total_game_h  = 0.0          # cumulative in-game hours elapsed
     _next_dawn_h   = _dawn_interval  # game-hours until first dawn
     _mp_synced     = False        # 서버 시간 최초 동기화 완료 여부 (멀티)
+    _zid_counter   = 0            # 내가 스폰한 좀비의 네트워크 ID 카운터
+    _zpos_accum    = 0.0          # 좀비 위치 브로드캐스트 누적 (6Hz)
+    _chunk_sync_accum = 0.0       # 청크 소유권 동기화 누적 (~0.5s)
     day_banner     = {"day": 1, "sub": "", "timer": 3.2, "max": 3.2}
     notifications  = []           # [{"text","color","timer"}, ...]
     kills          = 0
@@ -1661,6 +1664,17 @@ async def main():
         # 오프라인(DummyTransport)이면 원격 보간만 돌고 즉시 반환 → 비용 0.
         await sync_network_data(player, survival_day, dt, current_vehicle)
 
+        # 접속 결과 알림 (한 번만)
+        if _net.connect_status:
+            _st = _net.connect_status
+            _net.connect_status = ""
+            _msg = {"connected": ("mp_connected", (90, 255, 120)),
+                    "full":      ("mp_full",      (255, 120, 60)),
+                    "failed":    ("mp_failed",    (255, 180, 60))}.get(_st)
+            if _msg:
+                notifications.append({"text": lang.t(_msg[0]),
+                                      "color": _msg[1], "timer": 4.0})
+
         # ── Exploration tracking ────────────────────────────────────────────
         # Vehicles are loud — reveal more around them
         extra_r = 300 if current_vehicle is not None else 0
@@ -1790,6 +1804,29 @@ async def main():
                     ptcl_manager.muzzle_flash(_rp.render_pos, -kd)
                     camera.add_shake(shake)
 
+            # ── 멀티 근접: 원격 좀비 타격 → 소유자에 보고 ────────────────
+            if w.is_swinging and _net.remote_zombies:
+                import math as _m
+                _ad     = player.aim_dir.normalize() if player.aim_dir.length_squared() > 0.01 else pygame.Vector2(0, -1)
+                _half_a = _m.radians(w.arc_deg / 2)
+                for _zid, _rz in _net.remote_zombies.items():
+                    _hid = ("mz", _zid)
+                    if not _rz.alive or _hid in w._hit_ids:
+                        continue
+                    _d = player.pos.distance_to(_rz.pos)
+                    if _d > w.reach + _rz.radius:
+                        continue
+                    _to = _rz.pos - player.pos
+                    if _to.length_squared() > 0.01:
+                        _cos = _ad.dot(_to.normalize())
+                        if _m.acos(max(-1.0, min(1.0, _cos))) > _half_a:
+                            continue
+                    w._hit_ids.add(_hid)
+                    _net.send_zombie_hit(getattr(_rz, '_owner', None), _zid,
+                                         int(w.hit_damage), kd)
+                    ptcl_manager.muzzle_flash(_rz.pos, -kd)
+                    camera.add_shake(shake)
+
         elif w:
             # ── Ranged attack ─────────────────────────────────────────────
             held_mouse = pygame.mouse.get_pressed()[0] or touch.fire_held
@@ -1862,9 +1899,16 @@ async def main():
                             if _npc.pos.distance_to(player.pos) <= noise_r:
                                 _npc.hear_gunshot(player.pos)
 
-        # ── Chunk streaming ─────────────────────────────────────────────────
+        # ── Chunk streaming (멀티: 소유 청크에서만 좀비 스폰) ───────────────
         zones, new_gnpcs, new_gzombies, new_items, new_gvehs = \
-            chunk_manager.update(player.pos)
+            chunk_manager.update(player.pos, chunk_allowed=_net.is_chunk_owned)
+
+        # 청크 소유권 동기화 (~0.5s 주기)
+        _chunk_sync_accum += dt
+        if _net.transport.connected and _chunk_sync_accum >= 0.5:
+            _chunk_sync_accum = 0.0
+            _akeys = {f"{cx},{cy}" for (cx, cy) in chunk_manager._active_keys}
+            await _net.sync_chunk_ownership(_akeys)
         npcs.extend    (_npc_from_ghost(g)                    for g in new_gnpcs)
         zombies.extend (_zombie_from_ghost(g, day=survival_day) for g in new_gzombies)
         vehicles.extend(_vehicle_from_ghost(g) for g in new_gvehs)
@@ -2004,13 +2048,61 @@ async def main():
             if screws > 0:
                 ptcl_manager.screw_pop(z.pos)
 
+        # ── 좀비 공유 (멀티: 내 소유 좀비를 브로드캐스트) ────────────────────
+        if _net.transport.connected:
+            # 1) 사망 브로드캐스트
+            _dead_ids = [z._zid for z in dead_zombies
+                         if getattr(z, '_zid', None) and not getattr(z, '_remote', False)]
+            _net.broadcast_zombie_death(_dead_ids)
+            # 2) 신규 좀비 태깅 + 스폰 브로드캐스트
+            _spawn_batch = []
+            for z in zombies:
+                if not getattr(z, '_remote', False) and not getattr(z, '_zid', None):
+                    z._zid   = f"{_net.local_player_id}#{_zid_counter}"
+                    z._owner = _net.local_player_id
+                    _zid_counter += 1
+                    _spawn_batch.append({"zid": z._zid, "x": round(z.pos.x, 1),
+                                         "y": round(z.pos.y, 1), "kind": z.kind,
+                                         "hp": z.hp, "owner": z._owner})
+            _net.broadcast_zombie_spawn(_spawn_batch)
+            # 3) 위치 브로드캐스트 (6Hz)
+            _zpos_accum += dt
+            if _zpos_accum >= 1.0 / 6.0:
+                _zpos_accum = 0.0
+                _pos_batch = [{"zid": z._zid, "x": round(z.pos.x, 1),
+                               "y": round(z.pos.y, 1), "hp": z.hp}
+                              for z in zombies if getattr(z, '_zid', None)]
+                _net.broadcast_zombie_positions(_pos_batch)
+            # 4) 내 소유 좀비가 받은 원격 피해 적용
+            for _zh in _net.consume_zombie_hits():
+                for z in zombies:
+                    if getattr(z, '_zid', None) == _zh.get("zid"):
+                        z.take_hit(int(_zh.get("dmg", 0)),
+                                   pygame.Vector2(_zh.get("kx", 0), _zh.get("ky", 0)))
+                        break
+            # 5) 원격 좀비 접촉 피해 (타 클라 소유 좀비가 내게 닿으면 물림)
+            for _rz in _net.remote_zombies.values():
+                if not _rz.alive:
+                    continue
+                _rz._contact_cd = max(0.0, _rz._contact_cd - dt)
+                if (player.pos.distance_to(_rz.pos)
+                        < player.radius + _rz.radius + 6 and _rz._contact_cd <= 0):
+                    _rz._contact_cd = _rz.contact_rate
+                    player.take_damage(_rz.contact_dmg)
+                    camera.add_shake(2.0)
+
         # ── Update: projectiles ─────────────────────────────────────────────
         _pvp_hits = []
+        _zhit_out = []
         hits, explosions = proj_manager.update(dt, bounds, zones, zombies, npcs,
-                                               player, remote_players, _pvp_hits)
+                                               player, remote_players, _pvp_hits,
+                                               _net.remote_zombies, _zhit_out)
         # PvP: 내 총알이 원격 플레이어 적중 → 서버로 피해 보고
         for _tgt, _dmg, _knock in _pvp_hits:
             _net.send_hit(_tgt, _dmg, _knock)
+        # 멀티: 원격 좀비 적중 → 소유자에게 피해 보고
+        for _zowner, _zid, _zdmg, _zknock in _zhit_out:
+            _net.send_zombie_hit(_zowner, _zid, _zdmg, _zknock)
 
         # PvP: 다른 플레이어에게 받은 피해 적용
         for _hit in _net.consume_damage():
@@ -2280,6 +2372,12 @@ async def main():
             if _vis(zombie.pos, margin=zombie.radius + 10):
                 zombie.draw(_world_surf, _vox, _voy, debug=debug,
                             font=font_dbg if debug else None)
+
+        # ── 원격 좀비 (멀티) — 타 클라 소유 좀비 렌더링 ──────────────────────
+        if _net.remote_zombies:
+            for _rz in _net.remote_zombies.values():
+                if _rz.alive and _vis(_rz.pos, margin=_rz.radius + 10):
+                    _rz.draw(_world_surf, _vox, _voy)
 
         # ── 원격 플레이어 (멀티) — 청크 스트리밍과 동일한 뷰포트 컬링 적용 ──
         if remote_players:

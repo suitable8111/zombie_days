@@ -284,6 +284,8 @@ class ChunkManager:
         self._active_keys:  set[tuple[int, int]]         = set()
         # Keys whose ghosts have already been released into the live world
         self._spawned_keys: set[tuple[int, int]]         = set()
+        # 좀비 전용 릴리스 추적 (멀티: 소유 청크에서만 스폰하므로 별도 관리)
+        self._zspawned_keys: set[tuple[int, int]]        = set()
 
     # ── Internal helpers ──────────────────────────────────────────────────
 
@@ -322,10 +324,12 @@ class ChunkManager:
                 return float(x), float(y)
         return float(PLAYER_START_X), float(PLAYER_START_Y)
 
-    def update(self, player_pos):
+    def update(self, player_pos, chunk_allowed=None):
         """
         Call once per frame.
         Returns (active_zones, new_gnpcs, new_gzombies, new_items, new_gvehicles).
+        chunk_allowed: (cx,cy)->bool 콜백. 멀티에서 '소유한 청크'에서만 좀비를 스폰.
+                       None 이면 모든 청크 허용(싱글플레이).
         """
         new_keys = set(self._active_coords(player_pos))
         self._active_keys = new_keys
@@ -347,12 +351,18 @@ class ChunkManager:
                 self._spawned_keys.add(key)
                 new_gnpcs.extend(chunk.ghost_npcs)
                 chunk.ghost_npcs.clear()
-                new_gzombies.extend(chunk.ghost_zombies)
-                chunk.ghost_zombies.clear()
                 new_gvehicles.extend(chunk.ghost_vehicles)
                 chunk.ghost_vehicles.clear()
                 if not chunk._items_placed:
                     new_items.extend(chunk.create_items())
+
+            # 좀비는 소유한 청크에서만 스폰 (멀티 권위). 별도 추적해
+            # 나중에 소유권을 얻으면 그때 스폰되도록 한다.
+            if key not in self._zspawned_keys and (
+                    chunk_allowed is None or chunk_allowed(key)):
+                self._zspawned_keys.add(key)
+                new_gzombies.extend(chunk.ghost_zombies)
+                chunk.ghost_zombies.clear()
 
         return zones, new_gnpcs, new_gzombies, new_items, new_gvehicles
 
@@ -375,6 +385,7 @@ class ChunkManager:
         chunk.ghost_zombies.append(
             GhostZombie(zombie.pos.x, zombie.pos.y, zombie.kind, zombie.hp))
         self._spawned_keys.discard(key)
+        self._zspawned_keys.discard(key)
 
     def serialize_vehicle(self, vehicle) -> None:
         key = (int(vehicle.pos.x) // CHUNK_SIZE, int(vehicle.pos.y) // CHUNK_SIZE)

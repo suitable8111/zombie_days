@@ -17,6 +17,9 @@ from fastapi import FastAPI
 # 서버 가동 시각 — 모든 클라이언트의 게임 시간 기준점 (단조 시계)
 SERVER_EPOCH = time.monotonic()
 
+# 동시 접속 최대 인원 (서버 보호). 초과 시 신규 접속 거부.
+MAX_PLAYERS = 10
+
 # ── Socket.IO 서버 (CORS 완전 개방: itch.io + localhost 모두 허용) ────────────
 sio = socketio.AsyncServer(
     async_mode="asgi",
@@ -47,12 +50,20 @@ app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
 # sid → 마지막으로 받은 플레이어 상태 dict
 players: dict[str, dict] = {}
 
+# 청크 소유권: "cx,cy" → sid (해당 청크의 좀비를 시뮬레이션·중계하는 클라)
+chunk_owners: dict[str, str] = {}
+
 
 # ── 이벤트 핸들러 ──────────────────────────────────────────────────────────────
 
 @sio.event
 async def connect(sid, environ, auth=None):
     """신규 접속: 빈 슬롯 생성 + 기존 접속자 목록을 신규 유저에게 전송."""
+    # 정원 초과 시 접속 거부 (클라이언트는 ConnectionError 로 받아 싱글 진행)
+    if len(players) >= MAX_PLAYERS:
+        print(f"[!] 정원 초과 거부: {sid}  ({len(players)}/{MAX_PLAYERS})")
+        raise socketio.exceptions.ConnectionRefusedError(
+            f"server full ({MAX_PLAYERS} max)")
     players[sid] = {"id": sid}
     # 현재 접속 중인 (나를 제외한) 다른 유저들의 마지막 상태를 신규 유저에게 보냄
     others = [st for other_sid, st in players.items()
@@ -98,10 +109,54 @@ async def hit_player(sid, data):
         await sio.emit("take_damage", payload, to=target)
 
 
+# ── 좀비 공유: 청크 소유권 + 이벤트 중계 ───────────────────────────────────────
+
+@sio.event
+async def claim_chunks(sid, data):
+    """클라가 활성 청크 소유를 요청 → 비어있거나 내 것이면 부여."""
+    keys = data.get("keys", []) if isinstance(data, dict) else []
+    granted = []
+    for k in keys:
+        owner = chunk_owners.get(k)
+        if owner is None or owner == sid or owner not in players:
+            chunk_owners[k] = sid
+            granted.append(k)
+    if granted:
+        await sio.emit("chunk_grant", {"owned": granted}, to=sid)
+
+
+@sio.event
+async def release_chunks(sid, data):
+    """클라가 활성 범위를 벗어난 청크 소유를 반납."""
+    keys = data.get("keys", []) if isinstance(data, dict) else []
+    for k in keys:
+        if chunk_owners.get(k) == sid:
+            del chunk_owners[k]
+
+
+@sio.event
+async def zombie_event(sid, data):
+    """소유 클라의 좀비 스폰/위치/사망 → 다른 모든 접속자에게 중계."""
+    await sio.emit("zombie_event", data, skip_sid=sid)
+
+
+@sio.event
+async def zombie_hit(sid, data):
+    """타 소유 좀비를 공격 → 해당 좀비 소유자에게만 피해 전달."""
+    if not isinstance(data, dict):
+        return
+    owner = data.get("owner")
+    if owner and owner in players:
+        await sio.emit("zombie_hit", data, to=owner)
+
+
 @sio.event
 async def disconnect(sid):
-    """접속 종료: 상태 삭제 + 다른 유저들에게 퇴장 통보."""
+    """접속 종료: 상태/소유권 삭제 + 다른 유저들에게 퇴장 통보."""
     players.pop(sid, None)
+    # 이 클라가 소유하던 청크 해제 (다른 클라가 이어받을 수 있도록)
+    for k in [k for k, o in chunk_owners.items() if o == sid]:
+        del chunk_owners[k]
     await sio.emit("leave_player", {"id": sid})
     print(f"[-] disconnect: {sid}  (online={len(players)})")
 

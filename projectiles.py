@@ -133,10 +133,13 @@ class ProjectileManager:
                 self.bullets.append(p)
 
     def update(self, dt, bounds, zones, zombies, npcs=None, player=None,
-               remote_players=None, pvp_out=None):
+               remote_players=None, pvp_out=None,
+               remote_zombies=None, zhit_out=None):
         """Returns (list[HitEvent], list[Grenade exploded]).
         remote_players: {pid: NetworkPlayer} — 멀티 PvP 대상.
         pvp_out: 리스트면 (target_id, dmg, knock) 튜플이 append 된다.
+        remote_zombies: {zid: Zombie} — 타 클라 소유 좀비 (멀티).
+        zhit_out: 리스트면 (owner, zid, dmg, knock) 튜플이 append 된다.
         """
         hits: list[HitEvent] = []
 
@@ -163,6 +166,21 @@ class ProjectileManager:
                             pvp_out.append((pid, b.damage, knock))
                         hits.append(HitEvent(pygame.Vector2(rp.render_pos),
                                              b.vel, False, "player"))
+                        b.alive = False
+                        break
+            if not b.alive:
+                continue
+            # ── 멀티: 내 총알이 원격(타 소유) 좀비 적중 → 소유자에 보고 ────
+            if b.owner == "player" and remote_zombies:
+                for _zid, _rz in remote_zombies.items():
+                    if _rz.alive and b.pos.distance_to(_rz.pos) < b.radius + _rz.radius:
+                        knock = (b.vel.normalize() if b.vel.length_squared() > 0
+                                 else pygame.Vector2(1, 0))
+                        if zhit_out is not None:
+                            zhit_out.append((getattr(_rz, '_owner', None),
+                                             _zid, b.damage, knock))
+                        hits.append(HitEvent(pygame.Vector2(_rz.pos), b.vel,
+                                             False, "zombie"))
                         b.alive = False
                         break
             if not b.alive:

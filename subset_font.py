@@ -14,7 +14,7 @@ BACKUP = SRC + ".bak"
 
 # ── 1. lang.py + menu.py 에서 사용되는 모든 문자 수집 ──────────────────────
 scan_files = [
-    "lang.py", "menu.py", "main.py", "shop.py",
+    "lang.py", "menu.py", "main.py", "shop.py", "network.py",
 ]
 chars = set()
 for fname in scan_files:

@@ -35,7 +35,7 @@ from entities import _draw_human_anim
 #   로컬 LAN 테스트 : "http://172.30.1.80:8000"
 #   로컬 단독       : "http://localhost:8000"
 # ═══════════════════════════════════════════════════════════════════════════════
-SERVER_URL = "https://CHANGE-ME.ngrok-free.app"   # ← ngrok 실행 후 나온 주소로 교체
+SERVER_URL = "https://favorable-glutinous-droop.ngrok-free.dev"   # ngrok (재시작 시 교체)
 # SERVER_URL = "http://172.30.1.80:8000"          # LAN 테스트용
 # SERVER_URL = "http://localhost:8000"            # 로컬 단독
 
@@ -58,6 +58,9 @@ local_player_id: str | None = None
 # 내 닉네임 — 화면에 표시 + 서버로 전송. main 에서 설정.
 local_player_name: str = f"Player{random.randint(1000, 9999)}"
 
+# 마지막 접속 결과 — main 이 읽어 알림 표시 ("", "connected", "full", "failed")
+connect_status: str = ""
+
 # ── 서버 권위 시간 ─────────────────────────────────────────────────────────────
 # 서버가 알려준 "가동 경과 초" + 로컬 단조시계로 외삽 → 모든 클라 동일 시간대
 _srv_elapsed_base: float | None = None   # 서버가 준 경과초 (sync 시점)
@@ -65,6 +68,26 @@ _srv_local_base:   float        = 0.0    # sync 받은 순간의 로컬 monotoni
 
 # ── 내가 받은 PvP 피해 큐 (메인 루프가 소비) ───────────────────────────────────
 incoming_damage: list[dict] = []   # [{"from","dmg","kx","ky"}, ...]
+
+# ── 좀비 공유 (클라이언트 권위 / 청크 소유 기반) ───────────────────────────────
+owned_chunks:    set[str]          = set()   # 내가 소유(시뮬레이션)하는 청크 "cx,cy"
+remote_zombies:  dict[str, object] = {}      # zid -> Zombie(_remote=True)
+incoming_zhits:  list[dict]        = []      # 내 좀비가 맞은 피해 (내가 소유자일 때)
+ZSYNC_HZ        = 6.0                          # 좀비 위치 송신 빈도
+_zpos_accum     = 0.0
+_claim_accum    = 0.0
+
+
+def chunk_key(cx: int, cy: int) -> str:
+    return f"{cx},{cy}"
+
+
+def is_chunk_owned(key) -> bool:
+    """좀비 스폰 권한. 오프라인이면 항상 True(싱글), 멀티면 소유 청크만."""
+    if not transport.connected:
+        return True
+    cx, cy = key
+    return f"{cx},{cy}" in owned_chunks
 
 
 def set_server_time(elapsed: float) -> None:
@@ -311,15 +334,30 @@ class SocketIOTransport(NetworkTransport):
         async def _on_dmg(data):
             self._inbox.append({"_damage": data})
 
+        @self._sio.on("chunk_grant")
+        async def _on_grant(data):
+            self._inbox.append({"_grant": data.get("owned", [])})
+
+        @self._sio.on("zombie_event")
+        async def _on_zev(data):
+            self._inbox.append({"_zombie_event": data})
+
+        @self._sio.on("zombie_hit")
+        async def _on_zhit(data):
+            self._inbox.append({"_zombie_hit": data})
+
     async def connect(self, url: str) -> bool:
+        global local_player_id, connect_status
         try:
             await self._sio.connect(url, transports=["websocket"],
                                     headers=_NGROK_HEADERS)
-            global local_player_id
             local_player_id = self._sio.get_sid()
             self.connected = True
+            connect_status = "connected"
             return True
         except Exception as e:
+            msg = str(e).lower()
+            connect_status = "full" if "full" in msg else "failed"
             print(f"[network] 서버 접속 실패: {e}")
             self.connected = False
             return False
@@ -498,9 +536,11 @@ async def sync_network_data(player, survival_day: int, dt: float,
     """
     global _sync_accum
 
-    # 1) 원격 플레이어 보간은 항상(매 프레임) 진행 → 부드러운 움직임
+    # 1) 원격 플레이어 + 원격 좀비 보간은 항상(매 프레임) 진행
     for rp in remote_players.values():
         rp.update(dt)
+    for rz in remote_zombies.values():
+        _interp_remote_zombie(rz, dt)
 
     # 오프라인이면 여기서 끝 (네트워크 비용 0)
     if not transport.connected:
@@ -523,6 +563,19 @@ async def sync_network_data(player, survival_day: int, dt: float,
         # PvP 피해 수신 → 메인 루프가 소비할 큐에 적재
         if "_damage" in snap:
             incoming_damage.append(snap["_damage"])
+            continue
+        # 청크 소유권 부여
+        if "_grant" in snap:
+            for k in snap["_grant"]:
+                owned_chunks.add(k)
+            continue
+        # 원격 좀비 이벤트 (스폰/위치/사망)
+        if "_zombie_event" in snap:
+            _apply_zombie_event(snap["_zombie_event"])
+            continue
+        # 내 좀비가 맞음 (내가 소유자) → 메인 루프가 적용
+        if "_zombie_hit" in snap:
+            incoming_zhits.append(snap["_zombie_hit"])
             continue
         # 퇴장 이벤트
         leave_id = snap.get("_leave")
@@ -566,10 +619,125 @@ def consume_damage() -> list[dict]:
     return out
 
 
+# ── 좀비 공유: 원격 좀비 보간 / 이벤트 적용 ────────────────────────────────────
+
+def _interp_remote_zombie(rz, dt: float) -> None:
+    tgt = getattr(rz, "_net_target", None)
+    if tgt is None:
+        return
+    prev = getattr(rz, "_net_prev", rz.pos)
+    t = getattr(rz, "_net_t", 1.0)
+    if t < 1.0:
+        t = min(1.0, t + dt * ZSYNC_HZ)
+        rz._net_t = t
+        rz.pos.update(prev.lerp(tgt, t))
+    else:
+        rz.pos.update(tgt)
+
+
+def _spawn_remote_zombie(z: dict):
+    from entities import Zombie
+    zid = z["zid"]
+    rz  = Zombie(z.get("x", 0.0), z.get("y", 0.0),
+                 kind=z.get("kind", "regular"))
+    rz._remote     = True
+    rz._zid        = zid
+    rz._owner      = z.get("owner")
+    rz.hp          = z.get("hp", rz.hp)
+    rz._net_prev   = pygame.Vector2(rz.pos)
+    rz._net_target = pygame.Vector2(rz.pos)
+    rz._net_t      = 1.0
+    remote_zombies[zid] = rz
+    return rz
+
+
+def _apply_zombie_event(ev: dict) -> None:
+    typ = ev.get("t")
+    if typ == "spawn":
+        for z in ev.get("z", []):
+            if z.get("zid") not in remote_zombies:
+                _spawn_remote_zombie(z)
+    elif typ == "pos":
+        for z in ev.get("z", []):
+            rz = remote_zombies.get(z.get("zid"))
+            if rz is None:
+                rz = _spawn_remote_zombie(z)
+            rz._net_prev   = pygame.Vector2(rz.pos)
+            rz._net_target = pygame.Vector2(z.get("x", rz.pos.x), z.get("y", rz.pos.y))
+            rz._net_t      = 0.0
+            if "hp" in z:
+                rz.hp = z["hp"]
+            if "st" in z:
+                rz._facing = pygame.Vector2(z["st"], 0) if False else rz._facing
+    elif typ == "death":
+        for zid in ev.get("ids", []):
+            remote_zombies.pop(zid, None)
+
+
+# ── 좀비 공유: 송신 헬퍼 (소유 클라이언트가 호출) ──────────────────────────────
+
+def _emit(event: str, payload: dict) -> None:
+    if not transport.connected:
+        return
+    import asyncio
+    try:
+        asyncio.ensure_future(transport.send_event(event, payload))
+    except Exception:
+        pass
+
+
+def broadcast_zombie_spawn(zlist: list) -> None:
+    """zlist: [{"zid","x","y","kind","hp","owner"}, ...]"""
+    if zlist:
+        _emit("zombie_event", {"t": "spawn", "z": zlist})
+
+
+def broadcast_zombie_positions(zlist: list) -> None:
+    if zlist:
+        _emit("zombie_event", {"t": "pos", "z": zlist})
+
+
+def broadcast_zombie_death(zids: list) -> None:
+    if zids:
+        _emit("zombie_event", {"t": "death", "ids": zids})
+
+
+def send_zombie_hit(owner: str, zid: str, dmg: int, knock: pygame.Vector2) -> None:
+    """원격(타 소유) 좀비를 공격했을 때 소유자에게 피해 보고."""
+    if not transport.connected or not owner:
+        return
+    _emit("zombie_hit", {"owner": owner, "zid": zid, "dmg": int(dmg),
+                         "kx": round(knock.x, 3), "ky": round(knock.y, 3)})
+
+
+def consume_zombie_hits() -> list[dict]:
+    global incoming_zhits
+    out = incoming_zhits
+    incoming_zhits = []
+    return out
+
+
+async def sync_chunk_ownership(active_keys: set[str]) -> None:
+    """매 ~0.5초 호출. 활성 청크 소유권을 서버에 요청/반납."""
+    if not transport.connected:
+        owned_chunks.clear()
+        return
+    stale = owned_chunks - active_keys
+    if stale:
+        await transport.send_event("release_chunks", {"keys": list(stale)})
+        owned_chunks.difference_update(stale)
+    want = active_keys - owned_chunks
+    if want:
+        await transport.send_event("claim_chunks", {"keys": list(want)})
+
+
 def reset_network() -> None:
     """새 게임 시작 / 메인 메뉴 복귀 시 원격 상태 초기화."""
     remote_players.clear()
     incoming_damage.clear()
+    remote_zombies.clear()
+    owned_chunks.clear()
+    incoming_zhits.clear()
     global _sync_accum, _srv_elapsed_base
     _sync_accum = 0.0
     _srv_elapsed_base = None
@@ -582,6 +750,9 @@ def go_offline() -> None:
     transport = DummyTransport()
     remote_players.clear()
     incoming_damage.clear()
+    remote_zombies.clear()
+    owned_chunks.clear()
+    incoming_zhits.clear()
     local_player_id = None
     _srv_elapsed_base = None
     # 기존 소켓 정리 (있으면)
