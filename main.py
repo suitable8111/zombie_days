@@ -2517,6 +2517,21 @@ async def main():
                  survival_day=survival_day, day_speed=day_speed,
                  speed_mult=_DBG_SPEED_MULT)
 
+        # ── 멀티플레이 접속 인원 표시 (우상단) ───────────────────────────────
+        if _net.transport.connected:
+            _online = len(remote_players) + 1   # 원격 + 나
+            _mp_f   = fonts.get(14)
+            _mp_s   = _mp_f.render(lang.t("mp_online", _online), True, (110, 255, 150))
+            _mp_bg  = pygame.Surface((_mp_s.get_width() + 16, _mp_s.get_height() + 8),
+                                     pygame.SRCALPHA)
+            _mp_bg.fill((0, 0, 0, 130))
+            _mp_x = WIDTH - _mp_bg.get_width() - 10
+            _mp_y = 10
+            screen.blit(_mp_bg, (_mp_x, _mp_y))
+            # 접속 표시등 (초록 점)
+            pygame.draw.circle(screen, (60, 220, 90), (_mp_x + 10, _mp_y + 13), 4)
+            screen.blit(_mp_s, (_mp_x + 18, _mp_y + 4))
+
         # ── Grenade aim hint (bottom-centre of screen) ────────────────────
         if (current_vehicle is None and _active_w is not None
                 and getattr(_active_w, 'kind', None) == "grenade"
