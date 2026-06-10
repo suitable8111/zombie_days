@@ -272,6 +272,10 @@ class NetworkTransport:
         """서버에서 도착한 다른 유저들의 스냅샷 목록을 가져온다."""
         raise NotImplementedError
 
+    def shutdown(self) -> None:
+        """연결 종료(동기, best-effort). go_offline 에서 호출."""
+        self.connected = False
+
 
 class DummyTransport(NetworkTransport):
     """서버가 없을 때 쓰는 no-op 전송기. 항상 빈 수신, 송신은 버린다."""
@@ -381,6 +385,11 @@ class SocketIOTransport(NetworkTransport):
         self._inbox = []
         return out
 
+    def shutdown(self) -> None:
+        self.connected = False
+        if self._sio is not None:
+            _fire(self._sio.disconnect())
+
 
 # ── 웹(Pygbag/emscripten) 전송기: 브라우저 Socket.IO JS 브릿지 ──────────────────
 
@@ -456,6 +465,14 @@ class WebBridgeTransport(NetworkTransport):
             pass
         return out
 
+    def shutdown(self) -> None:
+        self.connected = False
+        if self._window is not None:
+            try:
+                self._window.zdDisconnect()
+            except Exception:
+                pass
+
 
 # 현재 활성 전송기 — 기본은 더미(오프라인). 접속 성공 시 교체.
 transport: NetworkTransport = DummyTransport()
@@ -491,7 +508,7 @@ async def connect_to_server(url: str | None = None) -> bool:
         return False
     target = url or SERVER_URL
 
-    # 기존 연결을 확실히 끊는다 (await) — 재접속 시 유령 세션 방지
+    # 기존 연결을 확실히 끊는다 — 재접속 시 유령 세션 방지 (데스크톱/웹 공통)
     old = transport
     transport = DummyTransport()
     remote_players.clear(); remote_zombies.clear()
@@ -499,7 +516,12 @@ async def connect_to_server(url: str | None = None) -> bool:
     _old_sio = getattr(old, "_sio", None)
     if _old_sio is not None and getattr(_old_sio, "connected", False):
         try:
-            await _old_sio.disconnect()
+            await _old_sio.disconnect()    # 데스크톱: 확실히 await 종료
+        except Exception:
+            pass
+    else:
+        try:
+            old.shutdown()                 # 웹: JS 소켓 종료
         except Exception:
             pass
 
@@ -773,10 +795,11 @@ def go_offline() -> None:
     incoming_zhits.clear()
     local_player_id = None
     _srv_elapsed_base = None
-    # 기존 소켓 정리 (있으면) — task 참조 유지로 확실히 실행되게 함
-    sio = getattr(old, "_sio", None)
-    if sio is not None:
-        _fire(sio.disconnect())
+    # 기존 연결 종료 (데스크톱/웹 공통 — 각 transport 의 shutdown 사용)
+    try:
+        old.shutdown()
+    except Exception:
+        pass
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

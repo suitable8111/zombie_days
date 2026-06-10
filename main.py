@@ -1705,13 +1705,30 @@ async def main():
                             break
             if touch.just_space:
                 space_just_pressed = True
-            # 조이스틱 방향 → aim 방향 동기화
+            # 기본 조준: 조이스틱 방향
             _tdir = touch.aim_dir()
             if _tdir is not None:
                 player.aim_dir = _tdir
-            # fire 버튼 → held_mouse 처럼 처리
-            if touch.fire_held:
-                mouse_just_pressed = True
+            # FIRE 시 자동조준 — 가장 가까운 좀비 우선, 없으면 NPC
+            if touch.fire_held and current_vehicle is None:
+                _AUTO_R2 = 700 * 700
+                _best = None; _bd = _AUTO_R2
+                for _z in zombies:
+                    if _z.alive:
+                        _d = _z.pos.distance_squared_to(player.pos)
+                        if _d < _bd:
+                            _bd = _d; _best = _z
+                if _best is None:
+                    _bd = _AUTO_R2
+                    for _n in npcs:
+                        if _n.state != NPC.STATE_DEAD:
+                            _d = _n.pos.distance_squared_to(player.pos)
+                            if _d < _bd:
+                                _bd = _d; _best = _n
+                if _best is not None:
+                    _av = _best.pos - player.pos
+                    if _av.length_squared() > 0:
+                        player.aim_dir = _av.normalize()
 
         # ── Update: player ──────────────────────────────────────────────────
         if current_vehicle is None:

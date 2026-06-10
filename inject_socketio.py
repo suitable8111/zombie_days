@@ -14,10 +14,21 @@ BRIDGE = """<!-- ZombieDays Socket.IO 멀티플레이 브릿지 -->
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
   window._zd_inbox = [];
+  window.zdDisconnect = function(){
+    if(window._zd_sock){ try{ window._zd_sock.disconnect(); }catch(e){} }
+    window._zd_sock = null;
+    window._zd_sid  = null;
+    window._zd_inbox = [];
+  };
   window.zdConnect = function(url){
     try {
+      // 재접속 시 기존 소켓을 먼저 끊는다 (유령 세션 방지)
+      if(window._zd_sock){ try{ window._zd_sock.disconnect(); }catch(e){} }
+      window._zd_inbox = [];
+      window._zd_sid   = null;
       // polling 먼저 허용 + ngrok 경고 우회 헤더 → 인터스티셜 통과 후 ws 업그레이드
       window._zd_sock = io(url, {
+        forceNew: true,
         transports: ["polling", "websocket"],
         extraHeaders: {"ngrok-skip-browser-warning": "true"}
       });
