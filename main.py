@@ -819,8 +819,9 @@ def draw_options_screen(surface, mouse_pos):
     return _menu_mod.draw_options(surface, mouse_pos, WIDTH, HEIGHT)
 
 
-def draw_mode_screen(surface, mouse_pos, is_mp):
-    return _menu_mod.draw_mode_select(surface, mouse_pos, WIDTH, HEIGHT, is_mp)
+def draw_mode_screen(surface, mouse_pos, is_mp, name="", name_focused=False):
+    return _menu_mod.draw_mode_select(surface, mouse_pos, WIDTH, HEIGHT, is_mp,
+                                      name, name_focused)
 
 
 def draw_game_over(surface, kills, screws):
@@ -1163,6 +1164,9 @@ async def main():
     touch = TouchOverlay(WIDTH, HEIGHT)
     touch.visible = _menu_mod.get_setting("joystick", False)
     _pending_mp = False   # 모드 선택 화면에서 멀티 여부 임시 저장
+    _name_input   = _net.local_player_name   # 모드화면 닉네임 입력 버퍼
+    _name_focused = False                     # 닉네임 입력칸 포커스 여부
+    _NAME_MAXLEN  = 14
 
     # 멀티플레이 접속은 메인 메뉴의 "멀티플레이" 버튼에서 트리거된다.
 
@@ -1183,6 +1187,19 @@ async def main():
                 _scan_held.add(event.scancode)
             elif event.type == pygame.KEYUP:
                 _scan_held.discard(event.scancode)
+
+            # 모드 선택 화면 닉네임 입력 (포커스 시)
+            if (event.type == pygame.KEYDOWN and game_state == STATE_MODE
+                    and _name_focused):
+                if event.key == pygame.K_BACKSPACE:
+                    _name_input = _name_input[:-1]
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER,
+                                   pygame.K_ESCAPE):
+                    _name_focused = False
+                elif event.unicode and event.unicode.isprintable():
+                    if len(_name_input) < _NAME_MAXLEN:
+                        _name_input += event.unicode
+                continue   # 다른 핸들러로 전달 안 함
 
             if event.type == pygame.QUIT:
                 if game_state == STATE_PLAY:
@@ -1393,6 +1410,8 @@ async def main():
                             if action in ("singleplayer", "multiplayer"):
                                 # 조작 방식(모바일/PC) 선택 화면으로
                                 _pending_mp = (action == "multiplayer")
+                                _name_input = _net.local_player_name  # 랜덤 기본값
+                                _name_focused = False
                                 game_state  = STATE_MODE
                             elif action == "options":
                                 _prev_state = STATE_MENU
@@ -1406,13 +1425,21 @@ async def main():
                 # ── Mode select (모바일/PC) 클릭 ──────────────────────────────
                 if game_state == STATE_MODE:
                     mx, my = pygame.mouse.get_pos()
+                    _name_focused = False   # 빈 곳 클릭 시 포커스 해제
                     for action, rect in _menu_buttons:
                         if not rect.collidepoint(mx, my):
                             continue
+                        if action == "name_field":
+                            _name_focused = True
+                            break
                         if action == "mode_back":
                             game_state = STATE_MENU
                             break
                         if action in ("mode_mobile", "mode_pc"):
+                            # 닉네임 확정 (비어있으면 랜덤 유지)
+                            _nm = _name_input.strip()
+                            if _nm:
+                                _net.local_player_name = _nm
                             _use_joystick = (action == "mode_mobile")
                             _menu_mod.set_setting("joystick", _use_joystick)
                             touch.visible = _use_joystick
@@ -1446,7 +1473,8 @@ async def main():
             elif game_state == STATE_OPTIONS:
                 _menu_buttons = draw_options_screen(screen, mpos)
             elif game_state == STATE_MODE:
-                _menu_buttons = draw_mode_screen(screen, mpos, _pending_mp)
+                _menu_buttons = draw_mode_screen(screen, mpos, _pending_mp,
+                                                 _name_input, _name_focused)
             else:  # STATE_OVER
                 _menu_mod._draw_bg(screen)
                 draw_game_over(screen, kills, player.screws)
@@ -1662,6 +1690,19 @@ async def main():
                                     and not getattr(zone,'shop_type',None)
                                     and zone.near_door(player.pos)):
                                 zone.toggle_door(); break
+            if touch.just_t:
+                # 상점 상호작용 (키보드 T 와 동일)
+                if shop_mode:
+                    shop_mode = False; current_shop = None; shop_feedback = ""
+                elif current_vehicle is None:
+                    from entities import SHOPKEEPER_INTERACT_R
+                    for _npc in npcs:
+                        if (isinstance(_npc, ShopkeeperNPC)
+                                and _npc.pos.distance_to(player.pos)
+                                    < SHOPKEEPER_INTERACT_R):
+                            shop_mode = True; current_shop = _npc
+                            shop_selected = 0; shop_feedback = ""
+                            break
             if touch.just_space:
                 space_just_pressed = True
             # 조이스틱 방향 → aim 방향 동기화

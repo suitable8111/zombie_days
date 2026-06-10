@@ -283,28 +283,54 @@ def draw_title(surface, mouse_pos: tuple, W: int, H: int, version: str = "") -> 
 
 
 def draw_mode_select(surface, mouse_pos: tuple, W: int, H: int,
-                     is_multiplayer: bool) -> list[tuple[str, pygame.Rect]]:
+                     is_multiplayer: bool, name: str = "",
+                     name_focused: bool = False) -> list[tuple[str, pygame.Rect]]:
     """싱글/멀티 선택 후 조작 방식(모바일/PC)을 고르는 화면."""
     _init(W, H)
     _draw_bg(surface)
     cx = W // 2
     mx, my = mouse_pos
+    buttons = []
 
     # 제목
     f_title = fonts.get(36)
     sub     = lang.t("menu_multiplayer" if is_multiplayer else "menu_singleplayer")
     ts = f_title.render(lang.t("mode_select_title"), True, (220, 210, 195))
-    surface.blit(ts, (cx - ts.get_width() // 2, 150))
+    surface.blit(ts, (cx - ts.get_width() // 2, 120))
     f_sub = fonts.get(18)
     ss = f_sub.render(sub, True, (200, 90, 50))
-    surface.blit(ss, (cx - ss.get_width() // 2, 198))
+    surface.blit(ss, (cx - ss.get_width() // 2, 168))
+
+    # ── 닉네임 입력칸 (멀티플레이일 때만) ────────────────────────────────────
+    if is_multiplayer:
+        f_lbl = fonts.get(15)
+        lbl = f_lbl.render(lang.t("name_label"), True, (170, 165, 150))
+        nbw, nbh = 360, 46
+        nx = cx - nbw // 2
+        ny = 210
+        surface.blit(lbl, (nx, ny - 22))
+        box = pygame.Rect(nx, ny, nbw, nbh)
+        bgc = (30, 40, 30) if name_focused else (18, 14, 14)
+        bdc = (90, 220, 110) if name_focused else (110, 90, 60)
+        pygame.draw.rect(surface, bgc, box)
+        pygame.draw.rect(surface, bdc, box, 2)
+        f_name = fonts.get(22)
+        shown  = name if name else lang.t("name_placeholder")
+        col    = (255, 245, 200) if name else (110, 105, 95)
+        nt = f_name.render(shown, True, col)
+        surface.blit(nt, (box.x + 12, box.centery - nt.get_height() // 2))
+        # 깜빡이는 커서
+        if name_focused and (pygame.time.get_ticks() // 500) % 2 == 0:
+            cur_x = box.x + 12 + (nt.get_width() if name else 0) + 2
+            pygame.draw.line(surface, (230, 230, 220),
+                             (cur_x, box.y + 8), (cur_x, box.bottom - 8), 2)
+        buttons.append(("name_field", box))
 
     # 두 개의 큰 선택 버튼
     bw, bh, gap = 300, 110, 30
     total = bw * 2 + gap
     bx0   = cx - total // 2
-    by    = 270
-    buttons = []
+    by    = 300
     opts = [("mode_mobile", lang.t("mode_mobile"), lang.t("mode_mobile_desc"),
              (40, 120, 60)),
             ("mode_pc",     lang.t("mode_pc"),     lang.t("mode_pc_desc"),

@@ -161,18 +161,22 @@ class TouchOverlay:
         # 조이스틱 (좌하단 — 무기 패널 위, outer_r=68 → 하단=500+68=568 < 580)
         self.joystick = VirtualJoystick(cx=115, cy=H-268, outer_r=68)
 
-        # 액션 버튼 (우하단 — 슬롯 바·무기 패널 모두 회피)
-        # FIRE: cx=936, bottom=560+60=620 < 684 / left=876 > 762
-        # RUN : cx=844, bottom=560+30=590 < 684 / left=814 > 762
+        # 액션 버튼 (우하단 — 슬롯 바·무기 패널·서로 겹치지 않게 배치)
+        #   FIRE (대) : c(936,508) r58
+        #   RUN       : c(824,548) r40
+        #   E(탑승/문): c(932,368) r34
+        #   T(상호작용): c(839,396) r34
         self.buttons: dict[str, TouchButton] = {
-            "fire":  TouchButton(W-88,  H-268, 60, "FIRE", (210,55,35)),
-            "shift": TouchButton(W-195, H-230, 42, "RUN",  (160,100,210)),
+            "fire":  TouchButton(W-88,  H-260, 58, "FIRE", (210, 55, 35)),
+            "shift": TouchButton(W-200, H-220, 40, "RUN",  (160, 100, 210)),
+            "e":     TouchButton(W-92,  H-400, 34, "E",    (70, 120, 210)),
+            "t":     TouchButton(W-185, H-372, 34, "T",    (210, 160, 50)),
         }
 
-        # 고정 버튼 (항상 표시)
-        self.pause_btn = TouchButton(W-38, 38, 26, "II",   (80,80,80))
-        self.edit_btn  = TouchButton(W-38, 82, 20, "✎",    (80,80,80))
-        self.done_btn  = TouchButton(W//2, 32, 32, "DONE", (50,180,80))
+        # 고정 버튼 (항상 표시) — 우상단 접속인원 표시(y10~32)와 겹치지 않게 내림
+        self.pause_btn = TouchButton(W-38, 78,  26, "II",   (80, 80, 80))
+        self.edit_btn  = TouchButton(W-38, 124, 20, "✎",    (80, 80, 80))
+        self.done_btn  = TouchButton(W//2, 32, 32, "DONE", (50, 180, 80))
 
         # 슬롯 탭 감지용 rect 목록
         self._slot_rects = self._mk_slot_rects()
@@ -193,6 +197,7 @@ class TouchOverlay:
         # 단발 출력 플래그
         self.just_reload  = False
         self.just_e       = False
+        self.just_t       = False
         self.just_space   = False
         self.just_pause   = False
         self.just_slot:   int|None = None
@@ -310,6 +315,8 @@ class TouchOverlay:
             if b.contains(sx, sy):
                 self._btn_fid[fid] = n
                 b.pressed = True
+                if n == "e": self.just_e = True
+                if n == "t": self.just_t = True
                 return True
 
         return False
@@ -421,7 +428,8 @@ class TouchOverlay:
         return pygame.Vector2(dx, dy).normalize()
 
     def consume_frame_flags(self):
-        self.just_reload = self.just_e = self.just_space = self.just_pause = False
+        self.just_reload = self.just_e = self.just_t = False
+        self.just_space = self.just_pause = False
         self.just_slot = None
 
     # ── 렌더링 ───────────────────────────────────────────────────────────────
