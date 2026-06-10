@@ -1799,7 +1799,11 @@ async def main():
                 w = None  # can't swing melee from a vehicle
         if w and isinstance(w, MeleeWeapon):
             # ── Melee attack ─────────────────────────────────────────────
-            one_shot = mouse_just_pressed or space_just_pressed
+            # 모바일: 터치 자동 마우스 입력 무시, FIRE 버튼으로만 공격
+            if touch.visible:
+                one_shot = touch.fire_held
+            else:
+                one_shot = mouse_just_pressed or space_just_pressed
             if one_shot and w.can_attack():
                 w.start_swing()
             # Hit detection every frame (arc is active for swing_dur)
@@ -1892,9 +1896,14 @@ async def main():
 
         elif w:
             # ── Ranged attack ─────────────────────────────────────────────
-            held_mouse = pygame.mouse.get_pressed()[0] or touch.fire_held
+            # 모바일: 터치→마우스 자동변환 무시, FIRE 버튼으로만 발사
+            if touch.visible:
+                held_mouse = touch.fire_held
+                one_shot   = touch.fire_held or space_just_pressed
+            else:
+                held_mouse = pygame.mouse.get_pressed()[0]
+                one_shot   = mouse_just_pressed or space_just_pressed
             held_space = keys[pygame.K_SPACE]
-            one_shot   = mouse_just_pressed or space_just_pressed
             auto_fire  = held_mouse or held_space
 
             fire = (w.kind in ("machinegun", "flamethrower") and auto_fire) or \

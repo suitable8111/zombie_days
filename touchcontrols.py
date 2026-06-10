@@ -87,35 +87,52 @@ class VirtualJoystick:
         self.dx, self.dy   = rx/self.outer_r, ry/self.outer_r
 
     def draw(self, surface, edit_mode=False):
-        col_ring = (255, 200, 50, 60) if edit_mode else (255, 255, 255, 35)
-        col_bord = (255, 200, 50, 200) if edit_mode else (255, 255, 255, 90)
         r = self.outer_r
-        ring = pygame.Surface((r*2+4, r*2+4), pygame.SRCALPHA)
-        pygame.draw.circle(ring, col_ring, (r+2, r+2), r)
-        pygame.draw.circle(ring, col_bord, (r+2, r+2), r, 2)
-        surface.blit(ring, (self.cx-r-2, self.cy-r-2))
+        cx, cy = self.cx, self.cy
+
+        # 드롭 섀도우
+        sh = pygame.Surface((r*2+14, r*2+14), pygame.SRCALPHA)
+        pygame.draw.circle(sh, (0, 0, 0, 75), (r+7, r+9), r)
+        surface.blit(sh, (cx-r-7, cy-r-7))
+
+        # 베이스 (어두운 반투명 + 동심 가이드 링)
+        base = pygame.Surface((r*2+4, r*2+4), pygame.SRCALPHA)
+        c = r + 2
+        if edit_mode:
+            pygame.draw.circle(base, (60, 50, 20, 150), (c, c), r)
+            pygame.draw.circle(base, (255, 215, 90, 230), (c, c), r, 3)
+        else:
+            pygame.draw.circle(base, (22, 24, 30, 150), (c, c), r)
+            pygame.draw.circle(base, (255, 255, 255, 70), (c, c), r, 2)
+            pygame.draw.circle(base, (255, 255, 255, 30), (c, c), int(r*0.62), 1)
+        surface.blit(base, (cx-c, cy-c))
 
         if edit_mode:
-            # 편집 모드 레이블
             return
 
-        # 방향 힌트 (비활성)
+        # 방향 힌트 (비활성일 때만, 은은하게)
         if not self._active:
             for adx, ady, ang in [(0,-1,0),(1,0,90),(0,1,180),(-1,0,270)]:
-                ax = self.cx + int(adx*(r-16))
-                ay = self.cy + int(ady*(r-16))
-                arr = pygame.Surface((12,12), pygame.SRCALPHA)
-                pygame.draw.polygon(arr,(255,255,255,55),[(6,0),(12,12),(6,9),(0,12)])
+                ax = cx + int(adx*(r-15))
+                ay = cy + int(ady*(r-15))
+                arr = pygame.Surface((14, 14), pygame.SRCALPHA)
+                pygame.draw.polygon(arr, (255, 255, 255, 45),
+                                    [(7, 1), (12, 10), (7, 8), (2, 10)])
                 arr = pygame.transform.rotate(arr, -ang)
-                surface.blit(arr,(ax-arr.get_width()//2, ay-arr.get_height()//2))
+                surface.blit(arr, (ax-arr.get_width()//2, ay-arr.get_height()//2))
 
-        # 노브
+        # 노브 (그라데이션 느낌 + 광택)
         ki = self.inner_r
-        knob = pygame.Surface((ki*2+2, ki*2+2), pygame.SRCALPHA)
-        alpha = 160 if self._active else 100
-        pygame.draw.circle(knob,(255,255,255,alpha),(ki+1,ki+1),ki)
-        pygame.draw.circle(knob,(255,255,255,220),(ki+1,ki+1),ki,2)
-        surface.blit(knob,(int(self._kx)-ki-1, int(self._ky)-ki-1))
+        kx, ky = int(self._kx), int(self._ky)
+        knob = pygame.Surface((ki*2+4, ki*2+4), pygame.SRCALPHA)
+        kc = ki + 2
+        base_a = 230 if self._active else 180
+        accent = (90, 200, 255) if self._active else (210, 215, 225)
+        pygame.draw.circle(knob, (*accent, base_a), (kc, kc), ki)
+        pygame.draw.circle(knob, (255, 255, 255, 90),
+                           (kc, int(kc*0.72)), int(ki*0.7))
+        pygame.draw.circle(knob, (255, 255, 255, 235), (kc, kc), ki, 2)
+        surface.blit(knob, (kx-kc, ky-kc))
 
 
 # ── 터치 버튼 ─────────────────────────────────────────────────────────────────
@@ -131,15 +148,49 @@ class TouchButton:
 
     def draw(self, surface, font, edit_mode=False):
         r, g, b = self.color
-        alpha = 220 if self.pressed else (180 if edit_mode else 130)
-        bg = pygame.Surface((self.r*2+2, self.r*2+2), pygame.SRCALPHA)
-        pygame.draw.circle(bg, (r,g,b,alpha),(self.r+1,self.r+1), self.r)
-        border_col = (255,200,50,220) if edit_mode else (255,255,255,160 if self.pressed else 100)
-        pygame.draw.circle(bg, border_col,(self.r+1,self.r+1), self.r, 2)
-        surface.blit(bg,(self.cx-self.r-1, self.cy-self.r-1))
+        cx, cy, rad = self.cx, self.cy, self.r
+        press = self.pressed
+
+        # 부드러운 드롭 섀도우
+        sh = pygame.Surface((rad*2+12, rad*2+12), pygame.SRCALPHA)
+        pygame.draw.circle(sh, (0, 0, 0, 90), (rad+6, rad+8), rad)
+        surface.blit(sh, (cx-rad-6, cy-rad-6))
+
+        # 본체 (반투명 컬러) + 상단 광택
+        body = pygame.Surface((rad*2, rad*2), pygame.SRCALPHA)
+        fa = 250 if press else 175
+        pygame.draw.circle(body, (r, g, b, fa), (rad, rad), rad)
+        # 하단을 살짝 어둡게 (입체감)
+        pygame.draw.circle(body, (max(0, r-45), max(0, g-45), max(0, b-45),
+                                  fa), (rad, int(rad*1.35)), int(rad*0.92))
+        pygame.draw.circle(body, (r, g, b, fa), (rad, int(rad*0.78)),
+                           int(rad*0.9))
+        # 원형 마스크로 잘라내기
+        mask = pygame.Surface((rad*2, rad*2), pygame.SRCALPHA)
+        pygame.draw.circle(mask, (255, 255, 255, 255), (rad, rad), rad)
+        body.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        # 상단 광택 하이라이트
+        gloss = pygame.Surface((rad*2, rad*2), pygame.SRCALPHA)
+        pygame.draw.ellipse(gloss, (255, 255, 255, 55 if not press else 28),
+                            (int(rad*0.32), int(rad*0.16),
+                             int(rad*1.36), int(rad*0.78)))
+        gloss.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        body.blit(gloss, (0, 0))
+        surface.blit(body, (cx-rad, cy-rad))
+
+        # 테두리 링
+        if edit_mode:
+            bc = (255, 215, 90)
+        elif press:
+            bc = (255, 255, 255)
+        else:
+            bc = (235, 235, 240)
+        pygame.draw.circle(surface, bc, (cx, cy), rad, 3 if press else 2)
+
+        # 라벨
         txt = font.render(self.label, True,
-                          (255,255,255) if self.pressed else (220,220,220))
-        surface.blit(txt,(self.cx-txt.get_width()//2, self.cy-txt.get_height()//2))
+                          (255, 255, 255) if press else (240, 240, 245))
+        surface.blit(txt, (cx - txt.get_width()//2, cy - txt.get_height()//2))
 
 
 # ── 메인 오버레이 ─────────────────────────────────────────────────────────────
