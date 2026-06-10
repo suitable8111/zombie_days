@@ -16,7 +16,11 @@ BRIDGE = """<!-- ZombieDays Socket.IO 멀티플레이 브릿지 -->
   window._zd_inbox = [];
   window.zdConnect = function(url){
     try {
-      window._zd_sock = io(url, {transports:["websocket"]});
+      // polling 먼저 허용 + ngrok 경고 우회 헤더 → 인터스티셜 통과 후 ws 업그레이드
+      window._zd_sock = io(url, {
+        transports: ["polling", "websocket"],
+        extraHeaders: {"ngrok-skip-browser-warning": "true"}
+      });
       window._zd_sock.on("connect", function(){ window._zd_sid = window._zd_sock.id; });
       var push = function(d){ window._zd_inbox.push(JSON.stringify(d)); };
       window._zd_sock.on("init_players", function(arr){ (arr||[]).forEach(push); });

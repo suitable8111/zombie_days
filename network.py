@@ -460,6 +460,20 @@ class WebBridgeTransport(NetworkTransport):
 # 현재 활성 전송기 — 기본은 더미(오프라인). 접속 성공 시 교체.
 transport: NetworkTransport = DummyTransport()
 
+# fire-and-forget 코루틴의 참조 유지 (GC 로 인한 미실행 방지)
+_bg_tasks: set = set()
+
+
+def _fire(coro) -> None:
+    """코루틴을 백그라운드 실행하되 task 참조를 유지해 GC 되지 않게 한다."""
+    import asyncio
+    try:
+        t = asyncio.ensure_future(coro)
+        _bg_tasks.add(t)
+        t.add_done_callback(_bg_tasks.discard)
+    except Exception:
+        pass
+
 # 송신 누적 타이머 (메인 루프가 dt 를 넘겨 누적)
 _sync_accum = 0.0
 
@@ -477,8 +491,17 @@ async def connect_to_server(url: str | None = None) -> bool:
         return False
     target = url or SERVER_URL
 
-    # 기존 연결/원격 상태 정리 (재접속 시 유령 플레이어 방지)
-    go_offline()
+    # 기존 연결을 확실히 끊는다 (await) — 재접속 시 유령 세션 방지
+    old = transport
+    transport = DummyTransport()
+    remote_players.clear(); remote_zombies.clear()
+    owned_chunks.clear(); incoming_zhits.clear(); incoming_damage.clear()
+    _old_sio = getattr(old, "_sio", None)
+    if _old_sio is not None and getattr(_old_sio, "connected", False):
+        try:
+            await _old_sio.disconnect()
+        except Exception:
+            pass
 
     # transport 생성 — 라이브러리 미설치 시 조용히 오프라인 폴백
     try:
@@ -605,13 +628,9 @@ def send_hit(target_id: str, dmg: int, knock: pygame.Vector2) -> None:
     """원격 플레이어에게 PvP 피해를 입혔음을 서버에 보고 (fire-and-forget)."""
     if not transport.connected or target_id == local_player_id:
         return
-    import asyncio
     payload = {"target": target_id, "dmg": int(dmg),
                "kx": round(knock.x, 3), "ky": round(knock.y, 3)}
-    try:
-        asyncio.ensure_future(transport.send_event("hit_player", payload))
-    except Exception:
-        pass
+    _fire(transport.send_event("hit_player", payload))
 
 
 def consume_damage() -> list[dict]:
@@ -682,11 +701,7 @@ def _apply_zombie_event(ev: dict) -> None:
 def _emit(event: str, payload: dict) -> None:
     if not transport.connected:
         return
-    import asyncio
-    try:
-        asyncio.ensure_future(transport.send_event(event, payload))
-    except Exception:
-        pass
+    _fire(transport.send_event(event, payload))
 
 
 def broadcast_zombie_spawn(zlist: list) -> None:
@@ -758,14 +773,10 @@ def go_offline() -> None:
     incoming_zhits.clear()
     local_player_id = None
     _srv_elapsed_base = None
-    # 기존 소켓 정리 (있으면)
+    # 기존 소켓 정리 (있으면) — task 참조 유지로 확실히 실행되게 함
     sio = getattr(old, "_sio", None)
     if sio is not None:
-        try:
-            import asyncio
-            asyncio.ensure_future(sio.disconnect())
-        except Exception:
-            pass
+        _fire(sio.disconnect())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
