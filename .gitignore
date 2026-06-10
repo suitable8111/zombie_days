@@ -31,3 +31,4 @@ touch_layout.json
 # Virtual environments
 .venv*/
 venv/
+connections.log

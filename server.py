@@ -10,7 +10,9 @@ Zombie Days — 멀티플레이 중계 서버 (Phase 12)
 
   ※ uvicorn 의 진입점 `app` 은 아래에서 socketio.ASGIApp 으로 노출한다.
 """
+import os
 import time
+import logging
 import socketio
 from fastapi import FastAPI
 
@@ -19,6 +21,38 @@ SERVER_EPOCH = time.monotonic()
 
 # 동시 접속 최대 인원 (서버 보호). 초과 시 신규 접속 거부.
 MAX_PLAYERS = 10
+
+# ── 접속 로그 (별도 파일: connections.log) ─────────────────────────────────────
+_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "connections.log")
+conn_log = logging.getLogger("zombiedays.connections")
+conn_log.setLevel(logging.INFO)
+if not conn_log.handlers:
+    _fh = logging.FileHandler(_LOG_PATH, encoding="utf-8")
+    _fh.setFormatter(logging.Formatter(
+        "%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+    conn_log.addHandler(_fh)
+    conn_log.propagate = False   # 콘솔 중복 출력 방지
+
+# sid → {"ip", "name", "t"} 접속 부가정보 (로그/디스커넥트용)
+conn_info: dict[str, dict] = {}
+
+
+def _client_ip(environ) -> str:
+    """ngrok/프록시 경유 실제 클라이언트 IP 추출."""
+    # ngrok 등 프록시는 X-Forwarded-For 에 원 IP 를 넣는다 (첫 항목)
+    xff = environ.get("HTTP_X_FORWARDED_FOR")
+    if xff:
+        return xff.split(",")[0].strip()
+    real = environ.get("HTTP_X_REAL_IP")
+    if real:
+        return real.strip()
+    # ASGI scope 의 client (host, port)
+    scope = environ.get("asgi.scope") or {}
+    client = scope.get("client")
+    if client:
+        return str(client[0])
+    return environ.get("REMOTE_ADDR", "unknown")
 
 # ── Socket.IO 서버 (CORS 완전 개방: itch.io + localhost 모두 허용) ────────────
 sio = socketio.AsyncServer(
@@ -65,13 +99,16 @@ async def connect(sid, environ, auth=None):
         raise socketio.exceptions.ConnectionRefusedError(
             f"server full ({MAX_PLAYERS} max)")
     players[sid] = {"id": sid}
+    ip = _client_ip(environ)
+    conn_info[sid] = {"ip": ip, "name": None, "t": time.time()}
+    conn_log.info(f"CONNECT    sid={sid}  ip={ip}  online={len(players)}")
     # 현재 접속 중인 (나를 제외한) 다른 유저들의 마지막 상태를 신규 유저에게 보냄
     others = [st for other_sid, st in players.items()
               if other_sid != sid and len(st) > 1]   # 좌표가 한 번이라도 들어온 유저만
     await sio.emit("init_players", others, to=sid)
     # 서버 가동 경과 시간(초) → 클라가 동일 시간대(낮/밤) 계산에 사용
     await sio.emit("sync_time", {"elapsed": time.monotonic() - SERVER_EPOCH}, to=sid)
-    print(f"[+] connect: {sid}  (online={len(players)})")
+    print(f"[+] connect: {sid}  ip={ip}  (online={len(players)})")
 
 
 @sio.event
@@ -85,6 +122,12 @@ async def update_position(sid, data):
         return
     data["id"] = sid                 # 서버가 신뢰하는 식별자로 덮어씀
     players[sid] = data              # 최신 상태 저장
+    # 닉네임 최초 확인 시 로그 기록
+    info = conn_info.get(sid)
+    nm = data.get("name")
+    if info is not None and nm and info.get("name") != nm:
+        info["name"] = nm
+        conn_log.info(f"NAME       sid={sid}  ip={info['ip']}  name={nm!r}")
     # 나를 제외한 전원에게 전달
     await sio.emit("update_player", data, skip_sid=sid)
 
@@ -158,6 +201,13 @@ async def disconnect(sid):
     for k in [k for k, o in chunk_owners.items() if o == sid]:
         del chunk_owners[k]
     await sio.emit("leave_player", {"id": sid})
+    # 접속 로그 기록 (이름/IP/세션시간)
+    info = conn_info.pop(sid, None)
+    if info is not None:
+        dur = int(time.time() - info.get("t", time.time()))
+        nm  = info.get("name") or "(unknown)"
+        conn_log.info(f"DISCONNECT sid={sid}  ip={info['ip']}  "
+                      f"name={nm!r}  duration={dur}s  online={len(players)}")
     print(f"[-] disconnect: {sid}  (online={len(players)})")
 
 
