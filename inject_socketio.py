@@ -27,6 +27,12 @@ BRIDGE = """<!-- ZombieDays Socket.IO 멀티플레이 브릿지 -->
         window._zd_inbox.push(JSON.stringify({_synctime: d.elapsed})); });
       window._zd_sock.on("take_damage", function(d){
         window._zd_inbox.push(JSON.stringify({_damage: d})); });
+      window._zd_sock.on("chunk_grant", function(d){
+        window._zd_inbox.push(JSON.stringify({_grant: d.owned||[]})); });
+      window._zd_sock.on("zombie_event", function(d){
+        window._zd_inbox.push(JSON.stringify({_zombie_event: d})); });
+      window._zd_sock.on("zombie_hit", function(d){
+        window._zd_inbox.push(JSON.stringify({_zombie_hit: d})); });
     } catch(e){ console.error("zdConnect 실패", e); }
   };
   window.zdSend = function(s){

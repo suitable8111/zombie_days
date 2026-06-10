@@ -477,6 +477,9 @@ async def connect_to_server(url: str | None = None) -> bool:
         return False
     target = url or SERVER_URL
 
+    # 기존 연결/원격 상태 정리 (재접속 시 유령 플레이어 방지)
+    go_offline()
+
     # transport 생성 — 라이브러리 미설치 시 조용히 오프라인 폴백
     try:
         new_tr: NetworkTransport = (WebBridgeTransport() if _IS_WEB

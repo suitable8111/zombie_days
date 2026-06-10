@@ -139,6 +139,7 @@ STATE_OPTIONS = "options"
 STATE_PAUSE   = "pause"
 STATE_PLAY    = "play"
 STATE_OVER    = "over"
+STATE_MODE    = "mode"   # 싱글/멀티 선택 후 모바일/PC 조작 선택
 
 
 # ── Day/Night helpers ─────────────────────────────────────────────────────────
@@ -818,6 +819,10 @@ def draw_options_screen(surface, mouse_pos):
     return _menu_mod.draw_options(surface, mouse_pos, WIDTH, HEIGHT)
 
 
+def draw_mode_screen(surface, mouse_pos, is_mp):
+    return _menu_mod.draw_mode_select(surface, mouse_pos, WIDTH, HEIGHT, is_mp)
+
+
 def draw_game_over(surface, kills, screws):
     overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 190))
@@ -1157,6 +1162,7 @@ async def main():
     _menu_mod.load_settings()
     touch = TouchOverlay(WIDTH, HEIGHT)
     touch.visible = _menu_mod.get_setting("joystick", False)
+    _pending_mp = False   # 모드 선택 화면에서 멀티 여부 임시 저장
 
     # 멀티플레이 접속은 메인 메뉴의 "멀티플레이" 버튼에서 트리거된다.
 
@@ -1370,6 +1376,7 @@ async def main():
                             elif action == "mainmenu":
                                 _save_state(player, kills, civilian_kills,
                                             survival_day, game_time)
+                                _net.go_offline()   # 멀티 연결 해제 + 원격 상태 정리
                                 _frozen_frame = None
                                 game_state    = STATE_MENU
                             elif action == "quit":
@@ -1384,26 +1391,9 @@ async def main():
                     for action, rect in _menu_buttons:
                         if rect.collidepoint(mx, my):
                             if action in ("singleplayer", "multiplayer"):
-                                _is_mp = (action == "multiplayer")
-                                if _is_mp:
-                                    # 서버 접속 (백그라운드). 실패해도 게임은 진행.
-                                    asyncio.ensure_future(_net.connect_to_server())
-                                else:
-                                    _net.go_offline()   # 싱글: 네트워크 차단
-                                (player, npcs, zombies, zones, vehicles,
-                                 item_manager, proj_manager, ptcl_manager,
-                                 camera, chunk_manager, spatial, minimap) = _new_game()
-                                kills = 0; civilian_kills = 0
-                                game_time = start_hour; current_vehicle = None
-                                shop_mode = False; current_shop = None
-                                show_minimap = False; _current_town = None
-                                survival_day = 1; _total_game_h = 0.0
-                                _next_dawn_h = _dawn_interval
-                                _mp_synced = False
-                                day_banner = {"day": 1, "sub": "", "timer": 3.2, "max": 3.2}
-                                notifications = []
-                                difficulty.current_day = 1
-                                game_state = STATE_PLAY
+                                # 조작 방식(모바일/PC) 선택 화면으로
+                                _pending_mp = (action == "multiplayer")
+                                game_state  = STATE_MODE
                             elif action == "options":
                                 _prev_state = STATE_MENU
                                 game_state  = STATE_OPTIONS
@@ -1411,10 +1401,40 @@ async def main():
                                 game_state = _prev_state
                             elif action.startswith("lang_"):
                                 lang.set_lang(action[5:])
-                            elif action == "toggle_joystick":
-                                _menu_mod.set_setting("joystick",
-                                    not _menu_mod.get_setting("joystick", False))
-                                touch.visible = _menu_mod.get_setting("joystick", False)
+                            break
+
+                # ── Mode select (모바일/PC) 클릭 ──────────────────────────────
+                if game_state == STATE_MODE:
+                    mx, my = pygame.mouse.get_pos()
+                    for action, rect in _menu_buttons:
+                        if not rect.collidepoint(mx, my):
+                            continue
+                        if action == "mode_back":
+                            game_state = STATE_MENU
+                            break
+                        if action in ("mode_mobile", "mode_pc"):
+                            _use_joystick = (action == "mode_mobile")
+                            _menu_mod.set_setting("joystick", _use_joystick)
+                            touch.visible = _use_joystick
+                            # 네트워크 연결 (멀티) / 차단 (싱글)
+                            if _pending_mp:
+                                asyncio.ensure_future(_net.connect_to_server())
+                            else:
+                                _net.go_offline()
+                            (player, npcs, zombies, zones, vehicles,
+                             item_manager, proj_manager, ptcl_manager,
+                             camera, chunk_manager, spatial, minimap) = _new_game()
+                            kills = 0; civilian_kills = 0
+                            game_time = start_hour; current_vehicle = None
+                            shop_mode = False; current_shop = None
+                            show_minimap = False; _current_town = None
+                            survival_day = 1; _total_game_h = 0.0
+                            _next_dawn_h = _dawn_interval
+                            _mp_synced = False
+                            day_banner = {"day": 1, "sub": "", "timer": 3.2, "max": 3.2}
+                            notifications = []
+                            difficulty.current_day = 1
+                            game_state = STATE_PLAY
                             break
 
         # ── Non-play states that skip simulation entirely ──────────────────
@@ -1425,6 +1445,8 @@ async def main():
                 _menu_buttons = draw_menu(screen, mpos)
             elif game_state == STATE_OPTIONS:
                 _menu_buttons = draw_options_screen(screen, mpos)
+            elif game_state == STATE_MODE:
+                _menu_buttons = draw_mode_screen(screen, mpos, _pending_mp)
             else:  # STATE_OVER
                 _menu_mod._draw_bg(screen)
                 draw_game_over(screen, kills, player.screws)

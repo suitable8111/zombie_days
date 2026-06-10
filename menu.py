@@ -279,26 +279,57 @@ def draw_title(surface, mouse_pos: tuple, W: int, H: int, version: str = "") -> 
     ver  = fv.render(f"Zombie Days  {version}" if version else "Zombie Days", True, (160, 148, 120))
     surface.blit(ver, (12, H - 22))
 
-    # 모바일 모드 체크박스 (우하단)
-    joy_on  = get_setting("joystick", False)
-    fmob    = fonts.get(14)
-    mob_lbl = lang.t("menu_mobile_mode")
-    mob_txt = fmob.render(mob_lbl, True, (100,255,100) if joy_on else (160,155,140))
-    chk_x   = W - mob_txt.get_width() - 30
-    chk_y   = H - 22
-    # 체크박스 사각형
-    chk_r   = pygame.Rect(chk_x - 20, chk_y, 16, 16)
-    pygame.draw.rect(surface, (60,200,60) if joy_on else (80,80,70), chk_r)
-    pygame.draw.rect(surface, (160,155,140), chk_r, 1)
-    if joy_on:
-        pygame.draw.line(surface,(255,255,255),(chk_r.x+2,chk_r.centery),(chk_r.x+6,chk_r.bottom-3),2)
-        pygame.draw.line(surface,(255,255,255),(chk_r.x+6,chk_r.bottom-3),(chk_r.right-2,chk_r.y+3),2)
-    surface.blit(mob_txt,(chk_x, chk_y))
-    mob_hit = pygame.Rect(chk_r.x - 4, chk_y - 4, mob_txt.get_width()+30, 24)
+    return [(a, r) for a, r, _ in buttons if not _]
 
-    ret = [(a, r) for a, r, _ in buttons if not _]
-    ret.append(("toggle_joystick", mob_hit))
-    return ret
+
+def draw_mode_select(surface, mouse_pos: tuple, W: int, H: int,
+                     is_multiplayer: bool) -> list[tuple[str, pygame.Rect]]:
+    """싱글/멀티 선택 후 조작 방식(모바일/PC)을 고르는 화면."""
+    _init(W, H)
+    _draw_bg(surface)
+    cx = W // 2
+    mx, my = mouse_pos
+
+    # 제목
+    f_title = fonts.get(36)
+    sub     = lang.t("menu_multiplayer" if is_multiplayer else "menu_singleplayer")
+    ts = f_title.render(lang.t("mode_select_title"), True, (220, 210, 195))
+    surface.blit(ts, (cx - ts.get_width() // 2, 150))
+    f_sub = fonts.get(18)
+    ss = f_sub.render(sub, True, (200, 90, 50))
+    surface.blit(ss, (cx - ss.get_width() // 2, 198))
+
+    # 두 개의 큰 선택 버튼
+    bw, bh, gap = 300, 110, 30
+    total = bw * 2 + gap
+    bx0   = cx - total // 2
+    by    = 270
+    buttons = []
+    opts = [("mode_mobile", lang.t("mode_mobile"), lang.t("mode_mobile_desc"),
+             (40, 120, 60)),
+            ("mode_pc",     lang.t("mode_pc"),     lang.t("mode_pc_desc"),
+             (40, 80, 150))]
+    for i, (action, label, desc, accent) in enumerate(opts):
+        r = pygame.Rect(bx0 + i * (bw + gap), by, bw, bh)
+        hov = r.collidepoint(mx, my)
+        bg = pygame.Surface((r.w, r.h), pygame.SRCALPHA)
+        bg.fill((*accent, 150) if hov else (18, 18, 22, 160))
+        surface.blit(bg, r.topleft)
+        pygame.draw.rect(surface, (*accent, 255) if hov else (90, 90, 100), r,
+                         3 if hov else 2)
+        fl = fonts.get(28)
+        lt = fl.render(label, True, (255, 245, 200) if hov else (210, 205, 195))
+        surface.blit(lt, (r.centerx - lt.get_width() // 2, r.y + 26))
+        fd = fonts.get(14)
+        dt_ = fd.render(desc, True, (220, 220, 210) if hov else (150, 150, 145))
+        surface.blit(dt_, (r.centerx - dt_.get_width() // 2, r.y + 68))
+        buttons.append((action, r))
+
+    # 뒤로
+    back_r = pygame.Rect(cx - 110, by + bh + 50, 220, 50)
+    _draw_btn(surface, back_r, lang.t("opt_back"), back_r.collidepoint(mx, my))
+    buttons.append(("mode_back", back_r))
+    return buttons
 
 
 # ── Public: options screen ────────────────────────────────────────────────────
@@ -361,20 +392,7 @@ def draw_options(surface, mouse_pos: tuple, W: int, H: int) -> list[tuple[str, p
                           r.y + r.h // 2 - lt.get_height() // 2))
         lang_btns.append(("lang_" + lid, r))
 
-    # ── 조이스틱 토글 ────────────────────────────────────────────────────────
-    joy_on  = get_setting("joystick", False)
-    joy_r   = pygame.Rect(80, 186, 260, 46)
-    joy_hov = joy_r.collidepoint(mx, my)
-    joy_bg  = pygame.Surface((joy_r.w, joy_r.h), pygame.SRCALPHA)
-    joy_bg.fill((15, 40, 15, 200) if joy_on else (18, 8, 8, 130))
-    surface.blit(joy_bg, joy_r.topleft)
-    joy_bc  = (60, 200, 60) if joy_on else ((120, 30, 20) if joy_hov else (60, 18, 18))
-    pygame.draw.rect(surface, joy_bc, joy_r, 2)
-    if joy_on:
-        pygame.draw.rect(surface, (60, 200, 60), (joy_r.x, joy_r.y+6, 4, joy_r.h-12))
-    joy_lbl = lang.t("opt_joystick_on" if joy_on else "opt_joystick_off")
-    joy_ts  = fonts.get(18).render(joy_lbl, True, (100,255,100) if joy_on else (190,185,175))
-    surface.blit(joy_ts, (joy_r.x+16, joy_r.y+joy_r.h//2-joy_ts.get_height()//2))
+    # (조이스틱 선택은 게임 시작 시 '모바일/PC' 화면에서 처리)
 
     # ── Key bindings table ────────────────────────────────────────────────────
     f_sec2 = fonts.get(18)
@@ -413,7 +431,7 @@ def draw_options(surface, mouse_pos: tuple, W: int, H: int) -> list[tuple[str, p
     back_r = pygame.Rect(cx - bw // 2, sep_y + 14, bw, bh)
     hov    = back_r.collidepoint(mx, my)
     _draw_btn(surface, back_r, lang.t("opt_back"), hov)
-    buttons = lang_btns + [("toggle_joystick", joy_r), ("back", back_r)]
+    buttons = lang_btns + [("back", back_r)]
 
     return buttons
 
