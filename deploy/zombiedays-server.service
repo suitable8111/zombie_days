@@ -1,0 +1,30 @@
+# Zombie Days 멀티플레이 서버 — systemd 유닛
+# 부팅 시 자동 시작 + 크래시 시 자동 재시작.
+#
+# 설치 (리눅스 서버에서):
+#   1) 아래 USER, WorkingDirectory 경로를 본인 환경에 맞게 수정
+#   2) sudo cp deploy/zombiedays-server.service /etc/systemd/system/
+#   3) sudo systemctl daemon-reload
+#   4) sudo systemctl enable --now zombiedays-server
+#   확인:  systemctl status zombiedays-server
+#   로그:  journalctl -u zombiedays-server -f
+
+[Unit]
+Description=Zombie Days Multiplayer Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# ↓↓↓ 본인 계정/경로로 수정 ↓↓↓
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zombie_days
+ExecStart=/home/ubuntu/zombie_days/run_server.sh
+# ↑↑↑ 본인 계정/경로로 수정 ↑↑↑
+Environment=PORT=8000
+Environment=HOST=0.0.0.0
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

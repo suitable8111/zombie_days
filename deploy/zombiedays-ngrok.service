@@ -1,0 +1,30 @@
+# Zombie Days ngrok 터널 — systemd 유닛 (선택)
+# 고정 도메인으로 8000 포트를 https 터널링. 부팅 시 자동 시작.
+#
+# 사전 준비:
+#   1) ngrok 설치 + 인증:  ngrok config add-authtoken <YOUR_TOKEN>
+#   2) --domain 값을 본인 고정 도메인으로 수정 (ngrok 대시보드 → Domains)
+#   3) which ngrok 으로 ngrok 경로 확인 후 ExecStart 수정
+#
+# 설치:
+#   sudo cp deploy/zombiedays-ngrok.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now zombiedays-ngrok
+#   로그:  journalctl -u zombiedays-ngrok -f
+
+[Unit]
+Description=Zombie Days ngrok tunnel
+After=network-online.target zombiedays-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+# ↓↓↓ ngrok 경로 / 고정 도메인 / 포트를 본인 환경에 맞게 수정 ↓↓↓
+ExecStart=/usr/local/bin/ngrok http --domain=favorable-glutinous-droop.ngrok-free.dev 8000 --log=stdout
+# ↑↑↑ which ngrok 으로 경로 확인 ↑↑↑
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
